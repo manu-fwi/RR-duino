@@ -116,11 +116,13 @@ bool load_turnouts()
   while (first!=0) {
     to_bus.println(first);
     if (first & 0x80) {
+#ifdef TURNOUT_COMB
       turn_comb_cfg_t * comb = read_cfg_comb(ee_add);
       if (comb) {
         comb->next = turn_comb_cfg_head;
         turn_comb_cfg_head = comb;
       } else return false;
+#endif // TURNOUT_COMB
     } else {
       turnout_cfg_t * turn = read_cfg_turn(ee_add);
       if (turn) {
@@ -605,7 +607,7 @@ void config_several()
   send_simple_answer(0);  // no error occured
 }
 
-/*
+#ifdef TURNOUT_COMB
 void cfg_turn_comb()
 {
   int add;
@@ -684,7 +686,8 @@ void cfg_turn_comb()
     answer_cfg(false,false);   
   }
 }
-*/
+#endif
+
 bool in_range(byte val,byte bound_1,byte bound_2)
 {
   byte m = min(bound_1,bound_2);

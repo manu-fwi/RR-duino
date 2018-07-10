@@ -3,7 +3,9 @@
 #include <EEPROM.h>
 
 turnout_cfg_t * turnout_cfg_head = NULL;
+#ifdef TURNOUT_COMB
 turn_comb_cfg_t * turn_comb_cfg_head = NULL;
+#endif
 
 int eeprom_turn_end = -1;   // address where to add new turnouts config, -1 means not calculated yet
 
@@ -42,6 +44,7 @@ turnout_cfg_t * find_cfg_turnout_by_pin(byte pin) // find the config in the conf
   
 }
 
+#ifdef TURNOUT_COMB
 turn_comb_cfg_t * find_cfg_turn_comb(byte subadds[4])
 {
   turn_comb_cfg_t * cur = turn_comb_cfg_head;
@@ -56,6 +59,7 @@ turn_comb_cfg_t * find_cfg_turn_comb(byte subadds[4])
   }
   return cur;  
 }
+#endif
 
 bool room_in_eeprom(byte alloc_size)
 {
@@ -99,6 +103,7 @@ int ee_find_cfg_turnout(byte subadd)
   return ee_add;
 }
 
+#ifdef TURNOUT_COMB
 // Find the eeprom address of a turnout combination config from its subaddresses
 // if not found return the opposite of the address after the last block
 int ee_find_cfg_turn_comb(byte subadds[4])
@@ -127,6 +132,7 @@ int ee_find_cfg_turn_comb(byte subadds[4])
   }
   return ee_add;
 }
+#endif // TURNOUT_COMB
 
 turnout_cfg_t * read_cfg_turn(int ee_add)  // read cfg_turnout_t struct in eeprom
 {
@@ -146,6 +152,7 @@ turnout_cfg_t * read_cfg_turn(int ee_add)  // read cfg_turnout_t struct in eepro
 }
 
 
+#ifdef TURNOUT_COMB
 turn_comb_cfg_t * read_cfg_comb(int ee_add)  // read turn_comb_cfg_t struct in eeprom
 {
   // Allocate new config struct and populate it
@@ -160,6 +167,7 @@ turn_comb_cfg_t * read_cfg_comb(int ee_add)  // read turn_comb_cfg_t struct in e
   cfg->next = NULL;
   cfg->saved |= 0x80;
 }
+#endif //TURNOUT_COMB
 
 void update_cfg_turnout(turnout_cfg_t * cfg, int ee_add=-1) //update turnout cfg in eeprom
 {
@@ -191,6 +199,7 @@ void save_cfg_turnout(int ee_add,turnout_cfg_t * cfg)  // Save new cfg turnout
   }
 }
 
+#ifdef TURNOUT_COMB
 void update_cfg_turn_comb(turn_comb_cfg_t * cfg,int ee_add=-1) //update turnout cfg in eeprom
 {
   if (ee_add<0)
@@ -215,55 +224,4 @@ void save_cfg_turn_comb(int ee_add,turn_comb_cfg_t * cfg)  // Save new cfg turno
     eeprom_turn_end = ee_add;
   }
 }
-
-/*
- * Make a string from a turnout_cfg struct
- * str must be a buffer of at least 32 chars
- */
-void turnout_cfg_to_str(turnout_cfg_t * cfg, char * str)
-{
-  if (cfg->relay_pin_1==0xFE)
-    snprintf(str,32,"<AT %d %d %d %d>",cfg->subadd,cfg->servo_pin,cfg->straight_pos,cfg->thrown_pos);
-  else
-    snprintf(str,32,"<AT %d %d %d %d %d %d>",cfg->subadd,cfg->servo_pin,cfg->straight_pos,cfg->thrown_pos,
-             cfg->relay_pin_1,cfg->relay_pin_2);
-}
-
-static byte nb_turnouts_cfg(turn_comb_cfg_t * cfg)
-{
-  byte i =0;
-  while ((cfg->subadds[i]&0x7F)!=0) i++;
-  return i;
-}
-
-static byte nibble(byte number,byte which_nibble)
-{
-  if (which_nibble==1)
-    number >>= 4;
-  return number & 0x0F;
-}
-/*
- * Make a string from a turnout_cfg struct
- * str must be a buffer of at least 44 chars
- */
-
-void turn_comb_cfg_to_str(turn_comb_cfg_t * cfg, char * str)
-{
-  byte nb_turn = nb_turnouts_cfg(cfg);
-  byte pos = snprintf(str,44,"<AC %d ",nb_turn);
-  int i;
-  for (i=0;i<nb_turn;i++)
-    pos += snprintf(str+pos,44-pos,"%d ",cfg->subadds[i]&0x7F);
-  byte j=0, nib=nibble(cfg->forbidden[0],0);
-  pos--;   // back to the last space
-  do {
-    str[pos++]=' ';
-    for (i=nb_turn-1;i>=0;i--) {
-      str[pos++]='0'+((nib>>i)&0x01);
-    }
-    j++;
-    nib = nibble(cfg->forbidden[j/2],j%2);
-  } while ((nib!=0) && (j<4));
-  str[pos++]='>';
-  str[pos]='\0';
-}
+#endif //TURNOUT_COMB
