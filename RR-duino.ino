@@ -231,6 +231,9 @@ void send_simple_answer(byte err) {
   to_bus.write(0xFF);
   command_buf[0]&=~(1<<CMD_CMD_ANSWER_BV); // Unset command bit
   command_buf[2]=0x80 | err;  // add error code
+  if ((sensors_chng_state>0) || async_head)
+    command_buf[0] |= (1 << CMD_PEND_ANSWERS_BV) | (1<<CMD_ASYNC_BV);  // Set pending async events
+
   to_bus.write(0xFF);
   for (byte i;i<3;i++)
     to_bus.write(command_buf[i]);
@@ -863,7 +866,28 @@ bool check_show_cmd_2nd_stage()
 
 bool check_turnout_fine_cmd_2nd_stage()
 {
-  
+  if (cmd_pos<4)
+    return false;
+  // Complete!
+  byte subadd = command_buf[2] & 0x3F;
+  turnout_cfg_t * turn = find_cfg_turnout(subadd);
+  if (!turn) {
+    send_simple_answer(UNKNOWN_DEV);
+    return true;
+  }
+  if ((command_buf[3]>=10) && (command_buf[3]<=170)) { // reasonable values
+    if ((turn->status & 0x1F!=0) &&(turn->status & 0x1F!=NO_SERVO)) // Check if it was attached to a servo
+      servos[turn->status & 0x1F].detach();
+    if (turn->status & 0x1F!=0) { // It was not already doing fine tuning so attach it to servos[0]
+      turn->status &= 0xE0;   // Means: reserved for fine tuning
+      servos[0].detach();
+      servos[0].attach(turn->servo_pin);
+    }
+    servos[0].write(command_buf[3]); //set position
+  } else if ((command_buf[3]==0) && (turn->status & 0x1F==0) ) // pos=0 means detach servo
+    servos[0].detach();
+  send_simple_answer(0);
+  return true;
 }
 
 // returns true if pos is the beginning of a turnout config
@@ -990,19 +1014,17 @@ bool check_rwcmd_2nd_stage()
 // if command has been processed or address is not ours returns true, false otherwise
 bool check_cmd_1st_stage()
 {
-  if (!(command_buf[0] & CMD_CMD_ANSWER_BV))  // If this is an answer, it is not for us
+  if (!(command_buf[0] & CMD_CMD_ANSWER_BV) || (cmd_pos<=1))  // If this is an answer or if only command byte has been received just wait
     return true;
-  if ((!address_mode) && ((cmd_pos==2) && (command_buf[1]!=address))) // check address unless we are in address mode
+  if (!address_mode && (command_buf[1]!=address)) // check address unless we are in address mode
     return true;
+
+// If we are here this means command is for us and cmd_pos>=2, so we have at least command and address byte
 
   if (command_buf[0] & (1 << CMD_ASYNC_BV)) {
     // ASYNC command
-    if (cmd_pos == 2) // complete!
-    {
-      async_cmd(command_buf[0] >> 3);
-      return true;  
-    }
-    return false;
+    async_cmd(command_buf[0] >> 3);
+    return true;  
   }
   if (command_buf[0] & (1 << CMD_CFGCMD_BV))  // Config commands
   {
@@ -1010,19 +1032,11 @@ bool check_cmd_1st_stage()
     {
       switch ((command_buf[0] >> 5)&0x03) {
         case 0b00: //Version command
-          if (cmd_pos==2) // complete!
-          {
-            version_cmd();
-            return true;
-          }
-          return false;
+          version_cmd();
+          return true;
         case 0b01:  // Set address command
-          if (cmd_pos==2) // complete!
-          {
-            set_address(command_buf[1]);
-            return true;
-          }
-          return false;
+          set_address(command_buf[1]);
+          return true;
         case 0b10:
           // show command
           check_cmd = &check_show_cmd_2nd_stage;
