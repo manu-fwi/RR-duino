@@ -47,4 +47,8 @@ extern byte address;
 // This pin must be held LOW to enable the "set address mode"
 #define ADDRESS_MODE_PIN 2
 
+// DEBUG MACRO
+#define DEBUG(msg) Serial.print(msg)
+#define DEBUGLN(msg) Serial.println(msg)
+
 #endif // RRDUINO_H

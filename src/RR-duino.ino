@@ -117,6 +117,7 @@ bool load_turnouts()
   }
   int ee_add = 2;
   byte first = EEPROM.read(2);
+  int nb=0;
   while (first!=0) {
     Serial.println(first);
     if (first & 0x80) {
@@ -144,7 +145,10 @@ bool load_turnouts()
     }
     ee_add+=CFG_TURN_COMB_SIZE;
     first = EEPROM.read(ee_add);
+    nb++;
   }
+  Serial.print("turnouts:");
+  Serial.println(nb);
   eeprom_turn_end = ee_add;
   return true;
 }
@@ -158,6 +162,7 @@ bool load_sensors()
   sensors_chng_state=0;
   int ee_add = eeprom_sensor_end;
   byte first = EEPROM.read(ee_add);
+  int nb=0;
   while (first!=0) {
     Serial.println(first, HEX);
     sensor_cfg_t * sensor = read_cfg_sensor(ee_add);
@@ -175,7 +180,10 @@ bool load_sensors()
     ee_add-=CFG_TURN_COMB_SIZE;
     first = EEPROM.read(ee_add);
     eeprom_sensor_end = ee_add;
+    nb++;
   }
+  Serial.print("turnouts:");
+  Serial.println(nb);
   return true;
 }
 
@@ -213,8 +221,20 @@ void config_pins()
   pinMode(13, OUTPUT);
 }
 
+void clear_eeprom(bool answer=true)
+{
+  Serial.println("wiped out");
+  //EEPROM.write(0,0);  // Address is set to 0, this will prevent the whole EEPROM saving
+  //address = 0;
+  // Wipe turnouts and sensors out
+  EEPROM.write(EE_BEGIN_TURN,0);
+  EEPROM.write(EEPROM.length()-CFG_SENSOR_SIZE,0);
+  if (answer)
+    send_simple_answer(0);
+}
+
 void setup() {
-  //EEPROM.write(0,255); // To reset the EEPROM
+  clear_eeprom(false);
   Serial.begin(115200);
   while(!Serial);
   Serial.println("Started");
@@ -547,6 +567,14 @@ int config_one_turnout(byte pos)
 
     save_cfg_turnout(ee_free_slot,cfg);
   }
+  DEBUG("CONFIG ONE TURNOUT ");
+  DEBUGLN(cfg_size);
+  DEBUG(cfg->servo_pin);
+  DEBUG(" ");
+  DEBUG(cfg->straight_pos);
+  DEBUG(" ");
+  DEBUGLN(cfg->thrown_pos);
+
   return cfg_size;
 }
 
@@ -558,8 +586,10 @@ int config_one_sensor(byte pos)
   sensor_cfg_t * cfg = find_cfg_sensor(command_buf[pos] & 0x3F);
   byte status = 0;
   // Set bits for status
-  if (!(command_buf[pos] & (1<<SUB_IODIR_BV)))
+  if (!(command_buf[pos] & (1<<SUB_IODIR_BV))) {
+    Serial.println("input sensor cfg");
     status |= (1<<SENSOR_BV_IO);
+  }
   if (command_buf[pos+1] & (1<<PIN_PULLUP_BV)) // Check pullup
     status |= (1 << SENSOR_BV_PULLUP);
   if (cfg) {
@@ -567,7 +597,12 @@ int config_one_sensor(byte pos)
     cfg->sensor_pin = command_buf[pos+1] & 0x7F;
     update_cfg_sensor(command_buf[pos]&0x3F,cfg->sensor_pin,status);       
     cfg->status=status | (1<<SENSOR_BV_SYNC);
+    Serial.print("Updating sensor=");
+    Serial.println(cfg->subadd);
   } else {
+    Serial.print("New sensor=");
+    Serial.println(command_buf[pos] & 0x3F);
+
     if (!room_in_eeprom(CFG_SENSOR_SIZE)) {
       Serial.println("EEPROM full");
       return -EEPROM_FULL;
@@ -590,19 +625,24 @@ int config_one_sensor(byte pos)
     save_cfg_sensor(ee_find_free_sensor(),cfg);
     cfg->status |= (1<<SENSOR_BV_SYNC);
   }
+  char sensor_str[20];
+  sensor_cfg_to_str(cfg, sensor_str);
+  DEBUG(sensor_str);
   return 2;
 }
 
 void config_several()
 {
   int (*func)(byte);
-  if (command_buf[0] & CMD_CFG_SENS_TURN_BV)
+  if (command_buf[0] & (1<<CMD_CFG_SENS_TURN_BV))
     func = &config_one_turnout;
   else
     func = &config_one_sensor;
   // Modify command_buf to become the answer
-  for (byte pos=2;pos<cmd_pos;)  // go over all subadresses
+  for (byte pos=2;pos<cmd_pos-1;)  // go over all subadresses (the last one is 0x80 so stop before)
   {
+    Serial.print("pos=");
+    Serial.println(pos);
     int val = (*func)(pos);
     if (val<0) { // error
       send_simple_answer(-val);
@@ -826,17 +866,6 @@ void set_turnout_pos()
   }
 }
 */
-void clear_eeprom()
-{
-  Serial.println("wiped out");
-  EEPROM.write(0,0);  // Address is set to 0, this will prevent the whole EEPROM saving
-  address = 0;
-  // Wipe turnouts and sensors out
-  EEPROM.write(EE_BEGIN_TURN,0);
-  EEPROM.write(EEPROM.length()-CFG_SENSOR_SIZE,0);
-  send_simple_answer(0);
-}
-
 void async_cmd(byte limit)
 {
   Serial.println("Sending async events");
@@ -899,11 +928,15 @@ bool check_turnout_fine_cmd_2nd_stage()
 bool beg_turnout_cfg(byte pos)
 {
   byte cur = 2;
+  //DEBUGLN("beg_turnout");
   while (cur<pos) {
     if (command_buf[cur+1] & (1<<SUB_RELAY_PIN_BV))
       cur+=6; // Add 2 for the relay pins
     else cur+=4; // subadd + servo pin + 2 turnout positions
+    //DEBUG(cur);
+    //DEBUG(" ");
   }
+  //DEBUGLN(pos);
   return cur==pos;
 }
 
@@ -914,13 +947,15 @@ bool check_cfgcmd_2nd_stage()
   if (command_buf[1] & (1<<ADD_LIST_BV)) { //Several configs
     if (command_buf[0] & (1<<CMD_CFG_SENS_TURN_BV)) { // turnout config
       //check if we have just begun a turnout config and if it is a termination (0x80)
-      if (beg_turnout_cfg(cmd_pos-1) && (command_buf[cmd_pos-1]=0x80)) { //complete!
+      DEBUG("TUNROUT CONFIG ");
+      DEBUGLN(cmd_pos);
+      if (beg_turnout_cfg(cmd_pos-1) && (command_buf[cmd_pos-1]==0x80)) { //complete!
         config_several();
         return true;
       }
     } else { // sensor config
       //check if we have just begun a sensor config and if it is a termination (0x80)
-      if (((cmd_pos-1)%2==0) && (command_buf[cmd_pos-1]=0x80)) { //complete!
+      if (((cmd_pos-1)%2==0) && (command_buf[cmd_pos-1]==0x80)) { //complete!
         config_several();
         return true;
       }      
@@ -1023,7 +1058,11 @@ bool check_cmd_1st_stage()
     return true;
   if (cmd_pos<=1)
     return false; // no address byte yet
-  if (!address_mode && (command_buf[1]!=address)) // check address unless we are in address mode
+  Serial.print("adress=");
+  Serial.print(address);
+  Serial.print(" received address=");
+  Serial.println(command_buf[1]&0x3F);
+  if (!address_mode && ((command_buf[1]&0x3F)!=address)) // check address unless we are in address mode
     return true;
   Serial.println("check cmd 1st stage C ");  Serial.println(cmd_pos);
 
@@ -1040,25 +1079,25 @@ bool check_cmd_1st_stage()
     if (command_buf[0] & (1 << CMD_CFG_SPECIAL_BV))  //Special config commands
     {
       Serial.println("Special config command");
-      switch ((command_buf[0] >> 5)&0x03) {
-        case 0b00: //Version command
+      switch ((command_buf[0] >> 4)&0x07) {
+        case 0b000: //Version command
           version_cmd();
           return true;
-        case 0b01:  // Set address command
+        case 0b001:  // Set address command
           set_address(command_buf[1]);
           return true;
-        case 0b10:
+        case 0b100:
+        case 0b101:
           // show command
           check_cmd = &check_show_cmd_2nd_stage;
           return false;
-        case 0b11:
-          if (command_buf[1] & (1 << CMD_CFG_SPECIAL_EEPROM_BV)) {  // Clear EEPROM
-            clear_eeprom();
-            return true;
-          }
+        case 0b110:
           // Turnout fine tuning, set the check function accordingly
           check_cmd = & check_turnout_fine_cmd_2nd_stage;
-          return false;
+          return false;       
+        case 0b111:
+          clear_eeprom();
+          return true;
       }
     }
     check_cmd = & check_cfgcmd_2nd_stage;  // it is a normal config command set the check cmd accordingly
@@ -1094,7 +1133,8 @@ void loop() {
     if (new_command) {
       if (cmd_pos<MAX_CMD_LEN) {
         command_buf[cmd_pos++] = c; // add new byte to the current command
-        //Serial.print(c);Serial.print(" ");
+        DEBUG(c);
+        DEBUG(" ");
         if ((*check_cmd)()) // check if command complete and calls the corresponding function
           new_command = false;  // wait for next START BYTE
       } else new_command = false; // buffer full without a valid command, start over

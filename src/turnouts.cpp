@@ -63,6 +63,12 @@ turn_comb_cfg_t * find_cfg_turn_comb(byte subadds[4])
 
 bool room_in_eeprom(byte alloc_size)
 {
+  Serial.print(eeprom_turn_end);
+  Serial.print(" ");
+  Serial.print(alloc_size);
+  Serial.print(" ");
+  Serial.print(eeprom_sensor_end);
+  Serial.println();
   if (eeprom_turn_end+alloc_size+1<=eeprom_sensor_end)
     return true;
   else return false;
