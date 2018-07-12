@@ -63,12 +63,12 @@ turn_comb_cfg_t * find_cfg_turn_comb(byte subadds[4])
 
 bool room_in_eeprom(byte alloc_size)
 {
-  Serial.print(eeprom_turn_end);
-  Serial.print(" ");
-  Serial.print(alloc_size);
-  Serial.print(" ");
-  Serial.print(eeprom_sensor_end);
-  Serial.println();
+  DEBUG(eeprom_turn_end);
+  DEBUG(" ");
+  DEBUG(alloc_size);
+  DEBUG(" ");
+  DEBUG(eeprom_sensor_end);
+  DEBUG();
   if (eeprom_turn_end+alloc_size+1<=eeprom_sensor_end)
     return true;
   else return false;
@@ -187,7 +187,7 @@ void update_cfg_turnout(turnout_cfg_t * cfg, int ee_add=-1) //update turnout cfg
   EEPROM.update(ee_add++,cfg->thrown_pos);
   EEPROM.update(ee_add++,cfg->relay_pin_1);
   EEPROM.update(ee_add++,cfg->relay_pin_2);
-  Serial.println("update cfg_t");
+  DEBUGLN("update cfg_t");
 }
 
 void save_cfg_turnout(int ee_add,turnout_cfg_t * cfg)  // Save new cfg turnout

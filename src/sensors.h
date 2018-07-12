@@ -62,7 +62,7 @@ int ee_find_cfg_sensor(byte subadd);
 int ee_find_free_sensor();
 sensor_cfg_t * read_cfg_sensor(int ee_add);  // read cfg_sensor_t struct in eeprom
 void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor); // save cfg sensor in eeprom
-void update_cfg_sensor(byte subadd,byte pin,byte status); // update an existing config
+void update_cfg_sensor(byte subadd,byte pin,byte status,int ee_add=-1); // update an existing config
 void sensor_cfg_to_str(sensor_cfg_t * sens,char * str);
 
 // check sensors: must be called on a regular basis (use the SENSOR_UPDATE timeout)

@@ -5,6 +5,7 @@
 
 extern HardwareSerial& to_bus;
 extern byte address;
+extern bool save_cfg_to_eeprom;
 
 // Defines for the protocol
 #define START_BYTE 0xFF

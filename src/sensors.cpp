@@ -120,11 +120,12 @@ void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
   }
 }
 
-void update_cfg_sensor(byte subadd,byte pin,byte status)
+void update_cfg_sensor(byte subadd,byte pin,byte status,int ee_add=-1)
 {
   // Save to eeprom
-  Serial.println("update sensor");
-  int ee_add = ee_find_cfg_sensor(subadd);
+  DEBUGLN("update sensor");
+  if (ee_add<0)
+    ee_add = ee_find_cfg_sensor(subadd);
   if (ee_add<0)
     return; // FIXME: error handling
     

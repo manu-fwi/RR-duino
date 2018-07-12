@@ -5,7 +5,10 @@
 #include <EEPROM.h>
 #include <Servo.h>
 
+// *************** globals *******************
 HardwareSerial& to_bus = Serial1;
+bool save_cfg_to_eeprom = false;
+
 // Pool of servos top be used
 Servo servos[NB_SERVOS];  // servos[0] is reserved for turnout position tuning
 unsigned long relay_time[NB_SERVOS];
@@ -100,26 +103,41 @@ int find_free_servo()  // returns the index of the first free servo, -1 if none
   return i;
 }
 
+// Config pin I/O for a turnout
+void config_pins_turnout(turnout_cfg_t * turn)
+{
+  pinMode(turn->servo_pin, OUTPUT);
+  // Set up relay pin, 0xFE means not used
+  if (turn->relay_pin_1!=0xFE)
+    pinMode(turn->relay_pin_1, OUTPUT);
+  if (turn->relay_pin_2!=0xFE)
+    pinMode(turn->relay_pin_2, OUTPUT);
+}
+
+// Config pin I/O for a sensor and also set the outputs to their last known state
+void config_pins_sensor( sensor_cfg_t * sensor, bool init_state = true) 
+{
+  if (sensor->status & (1<< SENSOR_BV_IO))
+    pinMode(sensor->sensor_pin, (sensor->status & (1 << SENSOR_BV_PULLUP)) ? INPUT_PULLUP : INPUT);
+  else {
+    pinMode(sensor->sensor_pin, OUTPUT);
+    if (init_state) {
+      if (sensor->status & 0x01)
+        digitalWrite(sensor->sensor_pin, HIGH);
+      else
+        digitalWrite(sensor->sensor_pin, LOW);
+    }
+  }
+}
+
+// Load turnouts configs from EEPROM, will replace any turnout with the same subaddress
 bool load_turnouts()
 {
-  address = EEPROM.read(0);
-  if (address==255) { // When eeprom has not been set it reads 255
-    address = 0;
-    version_nb = 0;
-    // init EEPROM
-    EEPROM.write(0,0);
-    EEPROM.write(1,0);
-    EEPROM.write(2,0);
-  } else version_nb = EEPROM.read(1);
-  if (address==0) {
-    eeprom_turn_end = 2;
-    return;
-  }
   int ee_add = 2;
   byte first = EEPROM.read(2);
   int nb=0;
   while (first!=0) {
-    Serial.println(first);
+    DEBUGLN(first);
     if (first & 0x80) {
 #ifdef TURNOUT_COMB
       turn_comb_cfg_t * comb = read_cfg_comb(ee_add);
@@ -141,14 +159,20 @@ bool load_turnouts()
           turn->next = turnout_cfg_head;
           turnout_cfg_head = turn;
         }
+        if (turn->next && (turn->next->subadd == turn->subadd)) { // delete an existing turnout with the same subaddress
+          turnout_cfg_t * temp = turn->next;
+          turn->next = turn->next->next;
+          delete temp;
+        }
+        config_pins_turnout(turn);
       } else return false;
     }
     ee_add+=CFG_TURN_COMB_SIZE;
     first = EEPROM.read(ee_add);
     nb++;
   }
-  Serial.print("turnouts:");
-  Serial.println(nb);
+  DEBUG("turnouts:");
+  DEBUGLN(nb);
   eeprom_turn_end = ee_add;
   return true;
 }
@@ -157,7 +181,7 @@ bool load_sensors()
 {
   if (address==0)
     return;
-  Serial.println("loading sensors...");    
+  DEBUGLN("loading sensors...");    
   eeprom_sensor_end = EEPROM.length()-CFG_SENSOR_SIZE;
   sensors_chng_state=0;
   int ee_add = eeprom_sensor_end;
@@ -176,49 +200,21 @@ bool load_sensors()
         sensor->next = sensor_cfg_head;
         sensor_cfg_head = sensor;
       }
+      if (sensor->next && (sensor->next->subadd == sensor->subadd)) { // delete an existing sensor with the same subaddress
+        sensor_cfg_t * temp = sensor->next;
+        sensor->next = sensor->next->next;
+        delete temp;
+      }
+      config_pins_sensor(sensor);
     } else return false;
     ee_add-=CFG_TURN_COMB_SIZE;
     first = EEPROM.read(ee_add);
     eeprom_sensor_end = ee_add;
     nb++;
   }
-  Serial.print("turnouts:");
-  Serial.println(nb);
+  DEBUG("sensors:");
+  DEBUGLN(nb);
   return true;
-}
-
-// Config pin I/O and also set the outputs to their last known state
-void config_pins()
-{
-  turnout_cfg_t * turn = turnout_cfg_head;
-
-  while (turn) {
-    pinMode(turn->servo_pin, OUTPUT);
-    // Set up relay pin, 0xFE means not used
-    if (turn->relay_pin_1!=0xFE)
-      pinMode(turn->relay_pin_1, OUTPUT);
-    if (turn->relay_pin_2!=0xFE)
-      pinMode(turn->relay_pin_2, OUTPUT);
-    turn = turn->next;
-  }
-
-  sensor_cfg_t * sensor = sensor_cfg_head;
-
-  while (sensor) {
-    if (sensor->status & (1<< SENSOR_BV_IO))
-      pinMode(sensor->sensor_pin, (sensor->status & (1 << SENSOR_BV_PULLUP)) ? INPUT_PULLUP : INPUT);
-    else {
-      pinMode(sensor->sensor_pin, OUTPUT);
-      if (sensor->status & 0x01)
-        digitalWrite(sensor->sensor_pin, HIGH);
-      else
-        digitalWrite(sensor->sensor_pin, LOW);
-    }
-    sensor = sensor->next;
-  }
-  // Config "set address mode" pin
-  pinMode(ADDRESS_MODE_PIN, INPUT_PULLUP);
-  pinMode(13, OUTPUT);
 }
 
 void clear_eeprom(bool answer=true)
@@ -234,17 +230,38 @@ void clear_eeprom(bool answer=true)
 }
 
 void setup() {
-  clear_eeprom(false);
+//  clear_eeprom(false);
   Serial.begin(115200);
   while(!Serial);
   Serial.println("Started");
   to_bus.begin(19200);
   delay(1000);
-  load_turnouts();
-  load_sensors();
-  config_pins();
+  address = EEPROM.read(0);
+  if (address==255) { // When eeprom has not been set it reads 255
+    address = 0;
+    version_nb = 0;
+    // init EEPROM
+    EEPROM.write(0,0);
+    EEPROM.write(1,0);
+    EEPROM.write(2,0);
+  } else version_nb = EEPROM.read(1);
+  if (address==0) {
+    eeprom_turn_end = 2;
+    return;
+  }
   for (byte i=0;i<NB_SERVOS;i++)
     relay_time[i]=0;
+  // Config "set address mode" pin
+  pinMode(ADDRESS_MODE_PIN, INPUT_PULLUP);
+  pinMode(13, OUTPUT);
+}
+
+void load_cfg_from_eeprom()
+{
+  if (!load_turnouts() || !load_sensors())
+    send_simple_answer(EEPROM_FULL);
+  else
+    send_simple_answer(0);
 }
 
 byte cmd_pos = 0;
@@ -529,7 +546,8 @@ int config_one_turnout(byte pos)
       cfg->relay_pin_1 = 0xFE;
       cfg->relay_pin_2 = 0xFE;
     }
-    update_cfg_turnout(cfg);
+    if (save_cfg_to_eeprom)
+      update_cfg_turnout(cfg);
   } else {
     // Allocate new config struct and populate it
     int ee_free_slot = ee_find_free_turnout();
@@ -565,7 +583,8 @@ int config_one_turnout(byte pos)
       turnout_cfg_head = cfg;
     }
 
-    save_cfg_turnout(ee_free_slot,cfg);
+    if (save_cfg_to_eeprom)
+      save_cfg_turnout(ee_free_slot,cfg);
   }
   DEBUG("CONFIG ONE TURNOUT ");
   DEBUGLN(cfg_size);
@@ -574,7 +593,7 @@ int config_one_turnout(byte pos)
   DEBUG(cfg->straight_pos);
   DEBUG(" ");
   DEBUGLN(cfg->thrown_pos);
-
+  config_pins_turnout(cfg);
   return cfg_size;
 }
 
@@ -595,10 +614,11 @@ int config_one_sensor(byte pos)
   if (cfg) {
     // this cfg exists so just update it
     cfg->sensor_pin = command_buf[pos+1] & 0x7F;
-    update_cfg_sensor(command_buf[pos]&0x3F,cfg->sensor_pin,status);       
+    if (save_cfg_to_eeprom)
+      update_cfg_sensor(command_buf[pos]&0x3F,cfg->sensor_pin,status);       
     cfg->status=status | (1<<SENSOR_BV_SYNC);
-    Serial.print("Updating sensor=");
-    Serial.println(cfg->subadd);
+    DEBUG("Updating sensor=");
+    DEBUGLN(cfg->subadd);
   } else {
     Serial.print("New sensor=");
     Serial.println(command_buf[pos] & 0x3F);
@@ -622,12 +642,15 @@ int config_one_sensor(byte pos)
     cfg->next = sensor_cfg_head;
     sensor_cfg_head = cfg;  
     // save it to eeprom
-    save_cfg_sensor(ee_find_free_sensor(),cfg);
+    if (save_cfg_to_eeprom)
+      save_cfg_sensor(ee_find_free_sensor(),cfg);
     cfg->status |= (1<<SENSOR_BV_SYNC);
   }
   char sensor_str[20];
   sensor_cfg_to_str(cfg, sensor_str);
   DEBUG(sensor_str);
+  // config pins
+  config_pins_sensor(cfg, false);
   return 2;
 }
 
@@ -708,7 +731,8 @@ void cfg_turn_comb()
     // Exists already, update it
     for (i=0;i<2;i++)
       cfg->forbidden[i]=forbidden[i];
-    update_cfg_turn_comb(cfg);
+    if (save_cfg_to_eeprom)
+      update_cfg_turn_comb(cfg);
     answer_cfg(false,false);
   } else {
     // New combination, allocate it and save it
@@ -728,7 +752,8 @@ void cfg_turn_comb()
       cfg->subadds[i] = subadds[i];
     for (i=0;i<2;i++)
       cfg->forbidden[i]=forbidden[i];
-    save_cfg_turn_comb(ee_add,cfg);
+    if (save_cfg_to_eeprom)
+      save_cfg_turn_comb(ee_add,cfg);
     answer_cfg(false,false);   
   }
 }
@@ -1052,6 +1077,46 @@ bool check_rwcmd_2nd_stage()
 // Checks if address is correct and command is complete then calls the corresponding function
 // for simple commands, otherwise set the check command pointer to the next stage check function
 // if command has been processed or address is not ours returns true, false otherwise
+void save_config()
+{
+  // Turnouts first
+  turnout_cfg_t * turn = turnout_cfg_head;
+  while (turn)
+  {
+    int ee_add = ee_find_cfg_turnout(turn->subadd);
+    if (ee_add<0) { // new config, add it in EEPROM
+      ee_add = ee_find_free_turnout();
+      if (ee_add>0)
+        save_cfg_turnout(ee_add, turn);
+      else {
+        // FIXME
+        DEBUGLN("Full EEPROM");
+      }
+    }
+    else
+      update_cfg_turnout(turn, ee_add);
+    turn = turn->next;
+  }
+  //Sensors
+  sensor_cfg_t * sensor = sensor_cfg_head;
+  while (sensor)
+  {
+    int ee_add = ee_find_cfg_sensor(sensor->subadd);
+    if (ee_add<0) { // new config, add it in EEPROM
+      ee_add = ee_find_free_sensor();
+      if (ee_add>0)
+        save_cfg_sensor(ee_add, sensor);
+      else {
+        // FIXME
+        DEBUGLN("Full EEPROM");
+      }
+    }
+    else
+      update_cfg_sensor(sensor->subadd, sensor->sensor_pin,sensor->status,ee_add);
+    sensor = sensor->next;
+  }
+}
+
 bool check_cmd_1st_stage()
 {
   if (!(command_buf[0] & (1<<CMD_CMD_ANSWER_BV)))  // If this is an answer discard it
@@ -1086,6 +1151,13 @@ bool check_cmd_1st_stage()
         case 0b001:  // Set address command
           set_address(command_buf[1]);
           return true;
+        case 0b010: // Store config in EEPROM
+          save_cfg_to_eeprom = true;
+          save_config();
+          return true;
+        case 0b011: // Load config from EEPROM
+          load_cfg_from_eeprom();
+           return true;
         case 0b100:
         case 0b101:
           // show command
