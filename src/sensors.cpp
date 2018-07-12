@@ -9,14 +9,30 @@ int eeprom_sensor_end = -1;   // address where to add new turnouts config, -1 me
 
 unsigned sensors_chng_state=0;
 
+// Find the last sensor with its subadd < subadd parameter
+// This is to ensure that we add a new sensor so that the list of sensors stays in ascending order with respect to subadd
+
+sensor_cfg_t * find_last_sensor_before(byte subadd)
+{
+  sensor_cfg_t * cur = sensor_cfg_head,* prev = NULL;
+  while (cur && (cur->subadd<subadd)) {
+    prev = cur;
+    cur = cur->next;    
+  }
+  return prev;  
+}
+
 sensor_cfg_t * find_cfg_sensor(byte subadd)
 {
   sensor_cfg_t * cur = sensor_cfg_head;
-  while (cur)
+  while (cur) {
     if (cur->subadd == subadd)
-      break;
-    else cur = cur->next;
-  return cur;
+      return cur;
+    else if (cur->subadd>subadd)
+      return NULL;
+    cur = cur->next;
+  }
+  return NULL;
 }
 
 // Find the eeprom address of a sensor config from its subaddress
@@ -64,16 +80,19 @@ sensor_cfg_t * read_cfg_sensor(int ee_add)  // read sensor_cfg_t struct in eepro
   Serial.println(cfg->subadd,HEX);
   Serial.print(cfg->sensor_pin,HEX);
   Serial.println("*********");
-  cfg->status = 1 << 7;
+  cfg->status = 1 << SENSOR_BV_SYNC;
   
   // Adjust status from eeprom content
-  if (cfg->subadd & 0x80)
+  if (cfg->subadd & (1 << EE_SENSOR_SUB_IO_BV))
     cfg->status |= 1<< SENSOR_BV_IO;
-  if (cfg->sensor_pin & 0x80)
+  if (cfg->sensor_pin & (1 << EE_SENSOR_PIN_PULLUP_BV))
     cfg->status |= 1 << SENSOR_BV_PULLUP;
-
+  if (cfg->subadd & (1 << EE_SENSOR_SUB_VALUE_BV))
+    cfg->status |= 1;
+  else
+    cfg->status &= 0xFE;
   // Clear bits
-  cfg->subadd &= 0x7F;
+  cfg->subadd &= 0x3F;  // Clean the subadd up
   cfg->sensor_pin &= 0x7F;
   cfg->last_time = 0;
   return cfg;
@@ -84,16 +103,16 @@ void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
   byte i = sensor->subadd;
   // Save to eeprom: set bits in subadd and servo_pin according to status
   if (sensor->status & (1 << SENSOR_BV_IO))
-    i |= 0x80;
+    i |= (1<<EE_SENSOR_SUB_IO_BV);
       
   EEPROM.write(ee_add, i);
   i = sensor->sensor_pin;
   if (sensor->status & (1 << SENSOR_BV_PULLUP))
-    i |= 0x80;
+    i |= (1 << EE_SENSOR_PIN_PULLUP_BV);
   
   EEPROM.write(ee_add+1, i);
   // Mark as saved in eeprom
-  sensor->status |= 0x80;
+  sensor->status |= (1 << SENSOR_BV_SYNC);
   ee_add-=CFG_SENSOR_SIZE;
   if (ee_add<eeprom_sensor_end) {  
     eeprom_sensor_end=ee_add;
@@ -111,12 +130,12 @@ void update_cfg_sensor(byte subadd,byte pin,byte status)
     
   // set bits in subadd and servo_pin according to status
   if (status & (1 << SENSOR_BV_IO))
-    subadd |= 0x80;
+    subadd |= (1<<EE_SENSOR_SUB_IO_BV);
       
   EEPROM.write(ee_add, subadd);
   
   if (status & (1 << SENSOR_BV_PULLUP))
-    pin |= 0x80;
+    pin |= (1<<EE_SENSOR_PIN_PULLUP_BV);
   EEPROM.update(ee_add+1, pin);
 }
 

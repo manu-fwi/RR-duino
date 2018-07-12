@@ -2,18 +2,24 @@
 #define TURNOUT_H
 #include "Arduino.h"
 
-#define NB_SERVOS 5     // for uno you can go up to 12, for mega up to 48 (make sure you have the power supply to go with that! Do not use the mega's one!
-                        // MAX is 63 (including the one reserved for fine tuning
+//No turnout combination for now
+#undef TURNOUT_COMB
+
+#define NB_SERVOS 5     // for uno you can go up to 12, for mega up to 48 (make sure you have the power supply to go with that! Do not use the mega's one!)
+                        // MAX is 63 (including the one reserved for fine tuning)
 #define NO_SERVO 0b00011111
 
-#define EE_BEGIN_TURN 1
+#define EE_BEGIN_TURN 2
 
 #define EE_FREE_TURN 0b10000000
 
 #define UNVALID_POS 0xFF   // Indicates that the turnout has not been positioned at all
 
+#define TURNOUT_BV_SYNC 7
 #define TURNOUT_BV_MOV 6
 #define TURNOUT_BV_POS 5
+
+#define RELAY_PULSE_LEN 10  // 10ms pulse for latching relays
 struct turnout_cfg_t
 {
   byte subadd;    // B7: reserved B7:0 (turnout config)
@@ -23,8 +29,8 @@ struct turnout_cfg_t
   byte straight_pos;
   byte thrown_pos;
   byte current_pos; // turnout pos
-  byte relay_pin_1; // =255 if unneeded activated when set to straight
-  byte relay_pin_2; // =255 if unneeded activated when set to thrown
+  byte relay_pin_1; // activated when set to straight (=254 if unneeded)
+  byte relay_pin_2; // activated when set to thrown (=254 if unneeded)
   /*
    *  B7=1 => sync in eeprom
    *  B6=0: not moving =1:moving
@@ -40,13 +46,14 @@ struct turnout_cfg_t
 /*
  * EEPROM structure:
  * subadd (byte) : B7: 0(=turnout) 1 is for forbidden combinations see below
- * servo_pin (byte)
+ * servo_pin (byte)  : B7 = last known value
  * straight_pos (byte)
  * thrown_pos (byte)
- * relay pin 1 (byte) 255 if not set
- * relay pin 2 (byte) 255 if not set
+ * relay pin 1 (byte) 254 if not set
+ * relay pin 2 (byte) 254 if not set
  */
 
+#ifdef TURNOUT_COMB
 struct turn_comb_cfg_t
 {
   byte subadds[4];   // subadds of the turnouts (in ascending order) (max 4) 0 for last subadds if you want less than 4
@@ -63,9 +70,6 @@ struct turn_comb_cfg_t
   turn_comb_cfg_t * next;
 };
 
-#define CFG_TURN_COMB_SIZE 6
-
-
 /*
  * EEPROM structure:
  * subadds (byte[4])  subadds[0][B7]==1 and subadds[1][B7]==1 if 2 forbidden combinations.
@@ -77,32 +81,38 @@ struct turn_comb_cfg_t
  * by putting subadd to 0x80 (subadd==0 is not valid), not zero as this marks the end of the entries list
  */
 
+turn_comb_cfg_t * find_cfg_turn_comb(byte subadd[4]);
+
+// EEPROM related functions
+int ee_find_cfg_turn_comb(byte subadds[4]);
+turn_comb_cfg_t * read_cfg_comb(int ee_add);  // read cfg_turn_comb_t struct in 
+void update_cfg_turn_comb(turn_comb_cfg_t * cfg,int ee_add=-1); //update turnout comb cfg in eeprom
+void save_cfg_turn_comb(int ee_add,turn_comb_cfg_t * cfg); //save turnout comb cfg in eeprom at address ee_add
+
+extern turn_comb_cfg_t * turn_comb_cfg_head;
+
+#endif //TURNOUT_COMB
+
+#define CFG_TURN_COMB_SIZE 6
+
+
+turnout_cfg_t * find_last_turn_before(byte subadd);
 turnout_cfg_t * find_cfg_turnout(byte subadd);  // find the config in the configs list
 turnout_cfg_t * find_cfg_turnout_by_pin(byte pin);  // find the config in the configs list
-turn_comb_cfg_t * find_cfg_turn_comb(byte subadd[4]);
 
 // EEPROM related functions
 
 bool room_in_eeprom(byte alloc_size);
 int ee_find_free_turnout();   // Find the first free slot or -1 if there is no room
 int ee_find_cfg_turnout(byte subadd);
-int ee_find_cfg_turn_comb(byte subadds[4]);
 
 turnout_cfg_t * read_cfg_turn(int ee_add);  // read cfg_turnout_t struct in eeprom
-turn_comb_cfg_t * read_cfg_comb(int ee_add);  // read cfg_turnout_t struct in 
 void update_cfg_turnout(turnout_cfg_t * cfg,int ee_add=-1); //update turnout cfg in eeprom
 void save_cfg_turnout(int ee_add,turnout_cfg_t * cfg);  // Save new cfg turnout at address ee_add
-void update_cfg_turn_comb(turn_comb_cfg_t * cfg,int ee_add=-1); //update turnout comb cfg in eeprom
-void save_cfg_turn_comb(int ee_add,turn_comb_cfg_t * cfg); //save turnout comb cfg in eeprom at address ee_add
-void turnout_cfg_to_str(turnout_cfg_t * cfg, char * str);    // tunrout_cfg_t struct to string
-void turn_comb_cfg_to_str(turn_comb_cfg_t * cfg, char * str);    // tunrout_cfg_t struct to string
-
 
 extern int eeprom_turn_end;
 extern int eeprom_sensor_end;
 
 extern turnout_cfg_t * turnout_cfg_head;
-extern turn_comb_cfg_t * turn_comb_cfg_head;
-
 
 #endif // TURNOUT_H

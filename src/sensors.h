@@ -9,6 +9,7 @@
 
 /***************Structs**************/
 
+#define SENSOR_BV_SYNC 7
 #define SENSOR_BV_IO 6
 #define SENSOR_BV_PULLUP 5
 
@@ -39,10 +40,15 @@ struct sensor_cfg_t
  * EEPROM structure:
  * subadd (byte) : >=1  B7=1 => INPUT
  *                      B7=0 => OUTPUT
+ *                      B6 = last known value (mostly used for output sensors)
  *                 Special value: EE_FREE_SENSOR (0x80) means deleted entry can be reused
  * sensor_pin (byte)    B7=0 => No PULLUP
  *                      B7=1 => PULLUP
  */
+
+#define EE_SENSOR_SUB_IO_BV 7
+#define EE_SENSOR_SUB_VALUE_BV 6
+#define EE_SENSOR_PIN_PULLUP_BV 7
 
 #define CFG_SENSOR_SIZE 2
 
@@ -50,6 +56,7 @@ struct sensor_cfg_t
 
 bool update_cfg_sensor();
 
+sensor_cfg_t * find_last_sensor_before(byte subadd); // Find the last sensor with subaddress < subadd
 sensor_cfg_t * find_cfg_sensor(byte subadd);  // find the config in the configs list
 int ee_find_cfg_sensor(byte subadd);
 int ee_find_free_sensor();
