@@ -106,6 +106,10 @@ bool load_turnouts()
   if (address==255) { // When eeprom has not been set it reads 255
     address = 0;
     version_nb = 0;
+    // init EEPROM
+    EEPROM.write(0,0);
+    EEPROM.write(1,0);
+    EEPROM.write(2,0);
   } else version_nb = EEPROM.read(1);
   if (address==0) {
     eeprom_turn_end = 2;
@@ -114,7 +118,7 @@ bool load_turnouts()
   int ee_add = 2;
   byte first = EEPROM.read(2);
   while (first!=0) {
-    to_bus.println(first);
+    Serial.println(first);
     if (first & 0x80) {
 #ifdef TURNOUT_COMB
       turn_comb_cfg_t * comb = read_cfg_comb(ee_add);
@@ -210,11 +214,11 @@ void config_pins()
 }
 
 void setup() {
+  //EEPROM.write(0,255); // To reset the EEPROM
   Serial.begin(115200);
   while(!Serial);
   Serial.println("Started");
   to_bus.begin(19200);
-  to_bus.println("Started also");
   delay(1000);
   load_turnouts();
   load_sensors();
@@ -234,8 +238,7 @@ void send_simple_answer(byte err) {
   if ((sensors_chng_state>0) || async_head)
     command_buf[0] |= (1 << CMD_PEND_ANSWERS_BV) | (1<<CMD_ASYNC_BV);  // Set pending async events
 
-  to_bus.write(0xFF);
-  for (byte i;i<3;i++)
+  for (byte i=0;i<3;i++)
     to_bus.write(command_buf[i]);
 }
 
@@ -774,11 +777,13 @@ void version_cmd()
 void set_address(byte add)
 {
   if (digitalRead(ADDRESS_MODE_PIN)==LOW) {
+    Serial.print("Set address to:");
+    Serial.println(add);
     digitalWrite(13,LOW);
     address = add;
     EEPROM.write(0,add);
     send_simple_answer(0);
-  }
+  } else Serial.println("Set address but not in address mode");  // No reply here it was not meant for us
 }
 /*
 void set_turnout_pos()
@@ -1014,10 +1019,13 @@ bool check_rwcmd_2nd_stage()
 // if command has been processed or address is not ours returns true, false otherwise
 bool check_cmd_1st_stage()
 {
-  if (!(command_buf[0] & CMD_CMD_ANSWER_BV) || (cmd_pos<=1))  // If this is an answer or if only command byte has been received just wait
+  if (!(command_buf[0] & (1<<CMD_CMD_ANSWER_BV)))  // If this is an answer discard it
     return true;
+  if (cmd_pos<=1)
+    return false; // no address byte yet
   if (!address_mode && (command_buf[1]!=address)) // check address unless we are in address mode
     return true;
+  Serial.println("check cmd 1st stage C ");  Serial.println(cmd_pos);
 
 // If we are here this means command is for us and cmd_pos>=2, so we have at least command and address byte
 
@@ -1028,8 +1036,10 @@ bool check_cmd_1st_stage()
   }
   if (command_buf[0] & (1 << CMD_CFGCMD_BV))  // Config commands
   {
+    Serial.println("Config command");
     if (command_buf[0] & (1 << CMD_CFG_SPECIAL_BV))  //Special config commands
     {
+      Serial.println("Special config command");
       switch ((command_buf[0] >> 5)&0x03) {
         case 0b00: //Version command
           version_cmd();
@@ -1084,6 +1094,7 @@ void loop() {
     if (new_command) {
       if (cmd_pos<MAX_CMD_LEN) {
         command_buf[cmd_pos++] = c; // add new byte to the current command
+        //Serial.print(c);Serial.print(" ");
         if ((*check_cmd)()) // check if command complete and calls the corresponding function
           new_command = false;  // wait for next START BYTE
       } else new_command = false; // buffer full without a valid command, start over
