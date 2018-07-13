@@ -183,7 +183,7 @@ bool load_sensors()
     return;
   DEBUGLN("loading sensors...");    
   eeprom_sensor_end = EEPROM.length()-CFG_SENSOR_SIZE;
-  sensors_chng_state=0;
+  sensors_chng_state=0; // FIXME
   int ee_add = eeprom_sensor_end;
   byte first = EEPROM.read(ee_add);
   int nb=0;
@@ -207,7 +207,7 @@ bool load_sensors()
       }
       config_pins_sensor(sensor);
     } else return false;
-    ee_add-=CFG_TURN_COMB_SIZE;
+    ee_add-=CFG_SENSOR_SIZE;
     first = EEPROM.read(ee_add);
     eeprom_sensor_end = ee_add;
     nb++;
@@ -230,12 +230,21 @@ void clear_eeprom(bool answer=true)
 }
 
 void setup() {
-//  clear_eeprom(false);
-  Serial.begin(115200);
+  //clear_eeprom(false);
+   Serial.begin(115200);
   while(!Serial);
   Serial.println("Started");
   to_bus.begin(19200);
   delay(1000);
+      DEBUG("Dump (initial) ");
+  for (int add = EEPROM.length()-CFG_SENSOR_SIZE;;add-=CFG_SENSOR_SIZE)
+  {
+    DEBUG(EEPROM.read(add));
+    DEBUG(",");
+    DEBUGLN(EEPROM.read(add+1));
+    if (EEPROM.read(add)==0)
+      break;
+  }
   address = EEPROM.read(0);
   if (address==255) { // When eeprom has not been set it reads 255
     address = 0;
@@ -244,6 +253,7 @@ void setup() {
     EEPROM.write(0,0);
     EEPROM.write(1,0);
     EEPROM.write(2,0);
+    EEPROM.write(EEPROM.length()-CFG_SENSOR_SIZE,0);
   } else version_nb = EEPROM.read(1);
   if (address==0) {
     eeprom_turn_end = 2;
@@ -594,6 +604,7 @@ int config_one_turnout(byte pos)
   DEBUG(" ");
   DEBUGLN(cfg->thrown_pos);
   config_pins_turnout(cfg);
+
   return cfg_size;
 }
 
@@ -606,7 +617,7 @@ int config_one_sensor(byte pos)
   byte status = 0;
   // Set bits for status
   if (!(command_buf[pos] & (1<<SUB_IODIR_BV))) {
-    Serial.println("input sensor cfg");
+    DEBUGLN("input sensor cfg");
     status |= (1<<SENSOR_BV_IO);
   }
   if (command_buf[pos+1] & (1<<PIN_PULLUP_BV)) // Check pullup
@@ -620,8 +631,8 @@ int config_one_sensor(byte pos)
     DEBUG("Updating sensor=");
     DEBUGLN(cfg->subadd);
   } else {
-    Serial.print("New sensor=");
-    Serial.println(command_buf[pos] & 0x3F);
+    DEBUG("New sensor=");
+    DEBUGLN(command_buf[pos] & 0x3F);
 
     if (!room_in_eeprom(CFG_SENSOR_SIZE)) {
       Serial.println("EEPROM full");
@@ -953,15 +964,11 @@ bool check_turnout_fine_cmd_2nd_stage()
 bool beg_turnout_cfg(byte pos)
 {
   byte cur = 2;
-  //DEBUGLN("beg_turnout");
   while (cur<pos) {
     if (command_buf[cur+1] & (1<<SUB_RELAY_PIN_BV))
       cur+=6; // Add 2 for the relay pins
     else cur+=4; // subadd + servo pin + 2 turnout positions
-    //DEBUG(cur);
-    //DEBUG(" ");
   }
-  //DEBUGLN(pos);
   return cur==pos;
 }
 
@@ -1114,6 +1121,14 @@ void save_config()
     else
       update_cfg_sensor(sensor->subadd, sensor->sensor_pin,sensor->status,ee_add);
     sensor = sensor->next;
+  }
+     DEBUG("Dump ");
+  for (int add = eeprom_sensor_end;add<EEPROM.length();add+=CFG_SENSOR_SIZE)
+  {
+    DEBUG(EEPROM.read(add));
+    DEBUG(",");
+    DEBUGLN(EEPROM.read(add+1));
+    
   }
 }
 

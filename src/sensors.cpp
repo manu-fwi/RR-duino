@@ -100,17 +100,21 @@ sensor_cfg_t * read_cfg_sensor(int ee_add)  // read sensor_cfg_t struct in eepro
 
 void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
 {
+  DEBUG("Save sensor ");
+  DEBUG(eeprom_sensor_end);
+  DEBUG(" ");
+  DEBUG(ee_add);
+  DEBUG(" ");
   byte i = sensor->subadd;
+  byte j = sensor->sensor_pin;
   // Save to eeprom: set bits in subadd and servo_pin according to status
-  if (sensor->status & (1 << SENSOR_BV_IO))
+  if (sensor->status & (1 << SENSOR_BV_IO)) {
     i |= (1<<EE_SENSOR_SUB_IO_BV);
-      
+    if (sensor->status & (1 << SENSOR_BV_PULLUP))
+      j |= (1 << EE_SENSOR_PIN_PULLUP_BV);
+  }
   EEPROM.write(ee_add, i);
-  i = sensor->sensor_pin;
-  if (sensor->status & (1 << SENSOR_BV_PULLUP))
-    i |= (1 << EE_SENSOR_PIN_PULLUP_BV);
-  
-  EEPROM.write(ee_add+1, i);
+  EEPROM.write(ee_add+1,j);
   // Mark as saved in eeprom
   sensor->status |= (1 << SENSOR_BV_SYNC);
   ee_add-=CFG_SENSOR_SIZE;
@@ -118,6 +122,10 @@ void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
     eeprom_sensor_end=ee_add;
     EEPROM.write(eeprom_sensor_end,0);  // Marks the end of the sensors
   }
+  DEBUG(i);
+  DEBUG(" ");
+  DEBUGLN(j);
+  DEBUGLN(eeprom_sensor_end);
 }
 
 void update_cfg_sensor(byte subadd,byte pin,byte status,int ee_add=-1)

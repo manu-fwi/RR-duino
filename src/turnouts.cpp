@@ -1,4 +1,5 @@
 #include "turnouts.h"
+#include "sensors.h"
 #include "RRduino.h"
 #include <EEPROM.h>
 
@@ -61,14 +62,45 @@ turn_comb_cfg_t * find_cfg_turn_comb(byte subadds[4])
 }
 #endif
 
+void ee_compute_turnout_end()
+{
+  int ee_add = EE_BEGIN_TURN;
+  byte first = EEPROM.read(ee_add);
+  while (first!=0) {
+    ee_add += CFG_TURN_COMB_SIZE;
+    first=EEPROM.read(ee_add);
+  }
+  eeprom_turn_end = ee_add;
+  DEBUG("EEPROM turnout end=");
+  DEBUGLN(eeprom_turn_end);
+}
+
+void ee_compute_sensor_end()
+{
+  int ee_add = EEPROM.length()-CFG_SENSOR_SIZE;
+  byte first = EEPROM.read(ee_add);
+  while (first!=0) {
+    ee_add -= CFG_SENSOR_SIZE;
+    first = EEPROM.read(ee_add);
+  }
+  eeprom_sensor_end = ee_add;
+  DEBUG("EEPROM sensor end=");
+  DEBUGLN(eeprom_sensor_end);  
+}
+
 bool room_in_eeprom(byte alloc_size)
 {
+  if (eeprom_turn_end==-1)
+    ee_compute_turnout_end();
+  if (eeprom_sensor_end==-1)
+    ee_compute_sensor_end();
+
   DEBUG(eeprom_turn_end);
   DEBUG(" ");
   DEBUG(alloc_size);
   DEBUG(" ");
   DEBUG(eeprom_sensor_end);
-  DEBUG();
+  DEBUGLN();
   if (eeprom_turn_end+alloc_size+1<=eeprom_sensor_end)
     return true;
   else return false;
