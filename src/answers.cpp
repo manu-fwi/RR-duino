@@ -41,7 +41,8 @@ void send_async_events(unsigned limit)
 {
   unsigned i=0;
   if (limit==0)
-    limit = 1000;
+  limit = 1000;
+  bool empty_answer=true;
   // First send any turnout async answer
   while ((i<limit) && async_head) {
     DEBUGLN("ASYNC EVENTS, NON SENSOR RELATED");
@@ -58,15 +59,16 @@ void send_async_events(unsigned limit)
     answer_t * temp = async_head;
     async_head = async_head->next;
     delete temp;
+    empty_answer = false;
   }
   // Now send all sensors state changes
   sensor_cfg_t * sens = sensor_cfg_head;
   byte * data = new byte[MAX_CMD_LEN];
-  data[0]=(1<<CMD_ASYNC_BV);  // as a read command, async bit set
+  data[0]=(1<<CMD_ASYNC_BV);  // as a read sensor command, async bit set
   data[1]=address | (1 << ADD_LIST_BV);  // Its a list
   byte len=2;
   DEBUG("SENSORS ASYNCS:");
-     DEBUGLN(sensors_chng_state);
+  DEBUGLN(sensors_chng_state);
 
   while ((i<limit) && sensors_chng_state && sens) {
     DEBUG("before=");
@@ -89,6 +91,7 @@ void send_async_events(unsigned limit)
           }
           i++;
           len = 2;
+          empty_answer = false;
         }
       }
     }
@@ -96,6 +99,15 @@ void send_async_events(unsigned limit)
     DEBUGLN(sensors_chng_state);
     sens = sens->next;  // Next sensor
   }
+  if (empty_answer) { // incase no event was to be reported, send an empty answer
+    data[0]= 0b00000100; // nothing to be reported
+    data[1]=address;
+    to_bus.write(0xFF); // Start byte
+    for (byte j=0;j<2;j++) {
+      to_bus.write(data[j]);
+    }
+  }
+  delete data;
 }
 
 // Queue a new answer to a list of answers
@@ -123,7 +135,12 @@ void queue_async_turnout(turnout_cfg_t * turnout)
 {
   answer_t * answ = async_head;
   for (;answ && answ->next;answ=answ->next);  // Find the last of the list
-  
+  DEBUG("QUEUE ASYNC TURNOUT=");
+  DEBUG(turnout->subadd);
+  DEBUG(",pos=");
+  DEBUG(turnout->current_pos);
+  DEBUG(",status=");
+  DEBUGLN(turnout->status);
   if (!answ || (answ->len>MAX_CMD_LEN-2)) { // empty list or last answer is full
     // create a new answer
     answer_t * p = new struct answer_t;
