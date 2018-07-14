@@ -910,7 +910,7 @@ void set_turnout_pos()
 */
 void async_cmd(byte limit)
 {
-  Serial.println("Sending async events");
+  DEBUGLN("Sending async events");
   send_async_events(limit);
 }
 
