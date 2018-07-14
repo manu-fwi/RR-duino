@@ -15,6 +15,8 @@ void send_answers(unsigned limit)
   unsigned i=0;
   if (limit==0)
     limit = 1000;
+  DEBUG("Send answers ");
+  DEBUG(limit);
   // First send any turnout async answer
   while ((i<limit) && answers_head) {
     if (!(answers_head->next)) { // last answer to be sent
@@ -23,6 +25,7 @@ void send_answers(unsigned limit)
         answers_head->data[0] |= (1 << CMD_PEND_ANSWERS_BV) | (1 << CMD_ASYNC_BV);
       }
     }
+    DEBUGLN("SENDING ANSWER");
     to_bus.write(0xFF); // Start byte
     for (byte j=0;j<answers_head->len;j++)
       to_bus.write(answers_head->data[j]);
@@ -85,18 +88,21 @@ void send_async_events(unsigned limit)
 
 // Queue a new answer to a list of answers
 // The answer that was last is modified to signal that now there is another answer after it
-void queue_answer(answer_t * head, byte * data, byte len)
+void queue_answer(byte * data, byte len)
 {
+  DEBUG("Queueing answer of length ");
+  DEBUGLN(len);
   answer_t * answ = new struct answer_t;
   answ->data = data;
+  answ->len = len;
   answ->next = NULL;  // last one in the list
-  if (head) {
-    answer_t * p =head;
+  if (answers_head) {
+    answer_t * p =answers_head;
     for (;p->next;p=p->next);  // Find the last of the list
     p->next =answ;  //link to the new answer
     p->data[0] |= (1 << CMD_PEND_ANSWERS_BV); // The one before the last now says another is waiting after it
   }
-  else head = answ;
+  else answers_head = answ;
 }
 
 // Queue a new turnout async event

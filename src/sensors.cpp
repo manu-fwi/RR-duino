@@ -77,9 +77,10 @@ sensor_cfg_t * read_cfg_sensor(int ee_add)  // read sensor_cfg_t struct in eepro
     return NULL;
   cfg->subadd = EEPROM.read(ee_add++);
   cfg->sensor_pin = EEPROM.read(ee_add++);
-  Serial.println(cfg->subadd,HEX);
-  Serial.print(cfg->sensor_pin,HEX);
-  Serial.println("*********");
+  DEBUG("sensor read from eeprom:");
+  DEBUG(cfg->subadd);
+  DEBUG(",");
+  DEBUGLN(cfg->sensor_pin);
   cfg->status = 1 << SENSOR_BV_SYNC;
   
   // Adjust status from eeprom content

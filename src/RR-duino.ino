@@ -462,6 +462,10 @@ byte show_one_sensor(sensor_cfg_t * sensor, byte * data)
 {
   data[0]=sensor->subadd;  
   data[1]=sensor->sensor_pin;
+  DEBUG("SHOW ONE SENSOR ");
+  DEBUG(sensor->subadd);
+  DEBUG(" ");
+  DEBUGLN(sensor->sensor_pin);
   // Set I/O bit
   if (!(sensor->status & (1 << SENSOR_BV_IO)))
     data[0] |= (1<<SUB_IODIR_BV); // output
@@ -498,14 +502,15 @@ void show_sensors_cmd(byte limit)
   { // build the answers
     byte pos = 2; // beginning of the payload of the command
     command_buf[0] &= ~(1 << CMD_CMD_ANSWER_BV); // Unset command bit ( this is an answer )
+    command_buf[1]|= (1<<ADD_LIST_BV); // Set the "list" bit
     for (sensor_cfg_t * sensor = sensor_cfg_head;sensor;sensor=sensor->next) {
       pos += show_one_sensor(sensor,command_buf+pos);
-      if (pos+3>MAX_CMD_LEN) // not enough place for another sensor config so queue the current answer
-      {
+      if ((pos+3>MAX_CMD_LEN) || !sensor->next)
+      { // current command is full or we are done so queue the current answer
         byte * data = (byte*) new byte[pos+1]; // Allocate mem
         memcpy(data, command_buf, pos+1); // copy answer
         data[pos]=0x80; // Add termination
-        queue_answer(answers_head, data, pos+1);
+        queue_answer(data, pos+1);
         pos = 2; // reset position
       }
     }
@@ -519,14 +524,15 @@ void show_turnouts_cmd(byte limit)
   { // build the answers
     byte pos = 2; // beginning of the payload of the command
     command_buf[0] &= ~(1 << CMD_CMD_ANSWER_BV); // Unset command bit ( this is an answer )
+    command_buf[1]|= (1<<ADD_LIST_BV); // Set the "list" bit
     for (turnout_cfg_t * turn = turnout_cfg_head;turn;turn=turn->next) {
       pos += show_one_turnout(turn,command_buf+pos);
-      if (pos+7>MAX_CMD_LEN) // not enough place for another turnout config so queue the current answer
-      {
+      if ((pos+7>MAX_CMD_LEN) || !turn->next)
+      { // command is full or last turnout so queue the current answer
         byte * data = (byte*) new byte[pos+1]; // Allocate mem
         memcpy(data, command_buf, pos+1); // copy answer
         data[pos]=0x80; // Add termination no error
-        queue_answer(answers_head, data, pos+1);
+        queue_answer(data, pos+1);
         pos = 2; // reset position
       }
     }
@@ -924,6 +930,8 @@ bool (*check_cmd)(void)=NULL;  // function pointer to the current check command 
 // Check and decode show command
 bool check_show_cmd_2nd_stage()
 {
+  DEBUG("SHOW CMD ");
+  DEBUGLN(cmd_pos);
   if (cmd_pos==3) { // complete!
     if (command_buf[0] & (1 << CMD_CFG_SENS_TURN_BV))
       show_turnouts_cmd(command_buf[2]);
