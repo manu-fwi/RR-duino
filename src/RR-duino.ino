@@ -312,15 +312,15 @@ int write_one_turnout(byte subadd)
 int write_one_sensor(byte subadd)
 {
   sensor_cfg_t * sensor;
-  Serial.print("write sensor command:");
-  Serial.println(subadd);
+  DEBUG("write sensor command:");
+  DEBUGLN(subadd);
   sensor = find_cfg_sensor(subadd & 0x3F);
   if (!sensor) {
-    Serial.println("unknown sensor");
+    DEBUGLN("unknown sensor");
     return -UNKNOWN_DEV;
   }
   if (sensor->status & (1 << SENSOR_BV_IO)) {
-    Serial.println("Trying to write on input sensor");
+    DEBUGLN("Trying to write on input sensor");
     return -UNVALID_DEV;
   }
   byte pos = (subadd >> SUB_VALUE_BV) & 0x01;
@@ -332,9 +332,9 @@ int write_one_sensor(byte subadd)
     sensor->status &= 0xFE;
   }
   sensor->status &= ~(1 << SENSOR_BV_SYNC); // No more synced in EEPROM
-  Serial.print(sensor->sensor_pin);
-  Serial.print(" ");
-  Serial.println(pos);
+  DEBUG(sensor->sensor_pin);
+  DEBUG(" ");
+  DEBUGLN(pos);
   return 0;  // No error
 }
 
@@ -1065,10 +1065,14 @@ bool check_rwcmd_2nd_stage()
   // Read or write on one subaddress only
   if (cmd_pos == 3) { // Complete!
     if (command_buf[0] & (1 << CMD_RWDIR_BV)) {// Write
-      if (command_buf[0] & (1 << CMD_SENS_TURN_BV))
-        write_one_turnout(command_buf[2]);
-      else
-        write_one_sensor(command_buf[2]);
+      if (command_buf[0] & (1 << CMD_SENS_TURN_BV)) {
+        int err = write_one_turnout(command_buf[2]);
+        send_simple_answer(-err);
+      }
+      else {
+        int err = write_one_sensor(command_buf[2]);
+        send_simple_answer(-err);
+      }
     }
     else { //Read
       int err;
