@@ -33,6 +33,7 @@ struct sensor_cfg_t
    */
   byte status;
   unsigned long last_time;  // Last time the state changed (used to debounce)
+                            // 0 = special value meaning that we have validated a change of state
   sensor_cfg_t * next;
 };
 

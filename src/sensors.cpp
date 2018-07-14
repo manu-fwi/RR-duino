@@ -95,7 +95,7 @@ sensor_cfg_t * read_cfg_sensor(int ee_add)  // read sensor_cfg_t struct in eepro
   // Clear bits
   cfg->subadd &= 0x3F;  // Clean the subadd up
   cfg->sensor_pin &= 0x7F;
-  cfg->last_time = 0;
+  cfg->last_time = millis();
   return cfg;
 }
 
@@ -178,32 +178,31 @@ bool check_all_sensors()
       // Check if state changed
       if (temp!=((current->status >> SENSOR_BV_CHK_STATE)&0x01)) {
         //If yes update time stamp
-        Serial.print("Changed Sensor:");
-        Serial.print(current->subadd);
-        Serial.print(" ");
-        Serial.print(current->sensor_pin,HEX);
-        Serial.print(" ");
-        Serial.print(current->status,HEX);
-        Serial.print(" ");
-        Serial.print(sensors_chng_state);
-        Serial.print(" ");
-        Serial.println(current->last_time);
         current->last_time = millis();
+        // And state
         if (temp)
-            current->status |= 1 << SENSOR_BV_CHK_STATE;
+            current->status |= (1 << SENSOR_BV_CHK_STATE);
         else
           current->status &= ~(1 << SENSOR_BV_CHK_STATE);
       } else {
-        // Same state, check if wa can validate it
-        if (millis()>current->last_time+SENSOR_DEBOUNCE) {
-          bool change = (current->status&0x01) ^temp;
+        // Same state, check if we can validate it
+        if (current->last_time && (millis()>current->last_time+SENSOR_DEBOUNCE)) {
+          byte change = (current->status&0x01) ^ temp;
+          DEBUG("CHANGING STABILIZED ");
+          DEBUGLN(current->status&0x01);
+          DEBUGLN(temp);
+          DEBUGLN(change);
+          current->last_time = 0;   // No need to go on detecting after now
           if (change) {
             current->status = (current->status & 0xFE)+temp; // Validate the new state
-            current->last_time = millis();   // Reset time
+             DEBUG("CHNG STATE=");
+            DEBUGLN(current->status & (1<<SENSOR_BV_CHNG_STATE));
             if ((current->status & (1<<SENSOR_BV_CHNG_STATE))==0)
             {
-              current->status |= 1 << SENSOR_BV_CHNG_STATE;
+              current->status |= (1 << SENSOR_BV_CHNG_STATE);
               sensors_chng_state++;
+              current->last_time = 0; // Special value that says we have detected a change in the state
+              // No need to go on
             }
           }
         }

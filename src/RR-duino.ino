@@ -282,6 +282,8 @@ void send_simple_answer(byte err) {
   to_bus.write(0xFF);
   command_buf[0]&=~(1<<CMD_CMD_ANSWER_BV); // Unset command bit
   command_buf[2]=0x80 | err;  // add error code
+  DEBUG("SEND SIMPLE ANSWER:");
+  DEBUGLN(sensors_chng_state);
   if ((sensors_chng_state>0) || async_head)
     command_buf[0] |= (1 << CMD_PEND_ANSWERS_BV) | (1<<CMD_ASYNC_BV);  // Set pending async events
 
@@ -397,7 +399,6 @@ int read_one_sensor(byte subadd)
       
       if (sensors_chng_state>0)
         sensors_chng_state--;
-      else Serial.println("Read one sensor that has changed state set, unset it");
     }
   }
   return val;

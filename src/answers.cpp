@@ -76,6 +76,7 @@ void send_async_events(unsigned limit)
     if (sens->status & (1 << SENSOR_BV_IO)) {
       if (sens->status & (1<<SENSOR_BV_CHNG_STATE)) {
         sensors_chng_state--;
+        sens->status &= ~(1<<SENSOR_BV_CHNG_STATE); // Reset changed state
         // Input sensor, send last validated state
         data[len++]=sens->subadd | ((sens->status & 0x01) << SUB_VALUE_BV);
         if ((len > MAX_CMD_LEN-2) || !sensors_chng_state) { // no more space or last change
