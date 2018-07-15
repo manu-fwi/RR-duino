@@ -375,6 +375,91 @@ void write_all_sensors()
   send_simple_answer(0);
 }
 
+int delete_one_turnout(byte subadd)
+{
+  DEBUG("Delete Turnout command:");
+  DEBUGLN(subadd);
+  // Find the previous one
+  turnout_cfg_t * prec = find_last_turn_before(subadd);
+  turnout_cfg_t * cfg;
+  if (prec)
+    cfg = prec->next;
+  else
+    cfg=turnout_cfg_head;
+    
+  if (!cfg || cfg->subadd!=subadd) {
+    DEBUGLN("Unknown turnout!");
+    return -UNKNOWN_DEV;
+  }
+  //Unlink
+  if (prec)
+    prec->next = cfg->next;
+  else
+    turnout_cfg_head = cfg->next;
+  delete cfg;
+  if (save_cfg_to_eeprom) {
+    // Delete i eeprom also
+    int ee_add = ee_find_cfg_turnout(subadd);
+    if (ee_add>0) // Weird if it is negative as the turnout existed, but just silently ignore this case
+      EEPROM.write(ee_add, EE_FREE_TURN);
+  }
+  return 0; // No error
+}
+
+int delete_one_sensor(byte subadd)
+{
+  sensor_cfg_t * cfg,* prec;
+  DEBUG("Delete sensor command:");
+  DEBUGLN(subadd);
+  // Find the previous one
+  prec = find_last_sensor_before(subadd);
+  if (prec)
+    cfg = prec->next;
+  else
+    cfg=sensor_cfg_head;
+
+  if (!cfg || cfg->subadd != subadd) {
+    DEBUGLN("unknown sensor");
+    return -UNKNOWN_DEV;
+  }
+  //Unlink
+  if (prec)
+    prec->next = cfg->next;
+  else
+    sensor_cfg_head = cfg->next;
+  delete cfg;
+  if (save_cfg_to_eeprom) {
+    // Delete i eeprom also
+    int ee_add = ee_find_cfg_sensor(subadd);
+    if (ee_add>0) // Weird if it is negative as the turnout existed, but just silently ignore this case
+      EEPROM.write(ee_add, EE_FREE_SENSOR);
+  }
+  return 0;  // No error
+}
+
+//Delete several turnouts/sensors
+void delete_several()
+{
+  int (*func)(byte); // pointer on the func to be called
+  // choose turnout/sensor according to command byte
+  if (command_buf[0] & CMD_CFG_SENS_TURN_BV)
+    func = &delete_one_turnout;
+  else
+    func = &delete_one_sensor;
+    
+  for (byte pos = 2;command_buf[pos]!=0x80;pos++) {
+    int err = (*func)(command_buf[pos]);
+    if (err<0)
+    {
+      command_buf[0]&=~(1<<CMD_CMD_ANSWER_BV); //Unset command bit
+      command_buf[pos]=0x80 | (-err);// set error code
+      send_one_msg(command_buf,pos+1);
+      return;
+    }
+  }
+  send_simple_answer(0); // No error
+}
+
 // read one sensor and returns its value
 // also unset the changed state if it was set and correct the sensors changed state counter
 int read_one_sensor(byte subadd)
@@ -616,7 +701,7 @@ int config_one_turnout(byte pos)
 }
 
 // Read the config of a sensor from the command buf at pos
-// update or create a new sensor
+// update / create a new sensor
 // returns the number of bytes read from the command buf, or a negative number in case of error
 int config_one_sensor(byte pos)
 {
@@ -988,7 +1073,7 @@ bool check_cfgcmd_2nd_stage()
   if (command_buf[1] & (1<<ADD_LIST_BV)) { //Several configs
     if (command_buf[0] & (1<<CMD_CFG_SENS_TURN_BV)) { // turnout config
       //check if we have just begun a turnout config and if it is a termination (0x80)
-      DEBUG("TUNROUT CONFIG ");
+      DEBUG("TURNOUT CONFIG ");
       DEBUGLN(cmd_pos);
       if (beg_turnout_cfg(cmd_pos-1) && (command_buf[cmd_pos-1]==0x80)) { //complete!
         config_several();
@@ -1094,9 +1179,33 @@ bool check_rwcmd_2nd_stage()
   return false;
 }
 
-// Checks if address is correct and command is complete then calls the corresponding function
-// for simple commands, otherwise set the check command pointer to the next stage check function
-// if command has been processed or address is not ours returns true, false otherwise
+bool check_del_cfgcmd_2nd_stage()
+{
+  if (cmd_pos<2)
+    return false;
+  if (command_buf[1] & (1 << ADD_LIST_BV)) { // List of subaddresses, terminated by 0x80
+    if ((cmd_pos>=3) && (command_buf[cmd_pos-1]==0x80)) // Complete!
+    {
+      delete_several();
+      return true;
+    }
+    return false;
+  }
+  // Read or write on one subaddress only
+  if (cmd_pos == 3) { // Complete!
+    if (command_buf[0] & (1 << CMD_CFG_SENS_TURN_BV)) {
+      int err = delete_one_turnout(command_buf[2]);
+      send_simple_answer(-err);
+    }
+    else {
+      int err = delete_one_sensor(command_buf[2]);
+      send_simple_answer(-err);
+    }
+    return true;
+  }
+  return false;
+}
+
 void save_config()
 {
   // Turnouts first
@@ -1145,19 +1254,23 @@ void save_config()
   }
 }
 
+// Checks if address is correct and command is complete then calls the corresponding function
+// for simple commands, otherwise set the check command pointer to the next stage check function
+// if command has been processed or address is not ours returns true, false otherwise
 bool check_cmd_1st_stage()
 {
   if (!(command_buf[0] & (1<<CMD_CMD_ANSWER_BV)))  // If this is an answer discard it
     return true;
   if (cmd_pos<=1)
     return false; // no address byte yet
-  Serial.print("adress=");
-  Serial.print(address);
-  Serial.print(" received address=");
-  Serial.println(command_buf[1]&0x3F);
+  DEBUG("adress=");
+  DEBUG(address);
+  DEBUG(" received address=");
+  DEBUGLN(command_buf[1]&0x3F);
   if (!address_mode && ((command_buf[1]&0x3F)!=address)) // check address unless we are in address mode
     return true;
-  Serial.println("check cmd 1st stage C ");  Serial.println(cmd_pos);
+  DEBUGLN("check cmd 1st stage C ");
+  DEBUGLN(cmd_pos);
 
 // If we are here this means command is for us and cmd_pos>=2, so we have at least command and address byte
 
@@ -1168,7 +1281,7 @@ bool check_cmd_1st_stage()
   }
   if (command_buf[0] & (1 << CMD_CFGCMD_BV))  // Config commands
   {
-    Serial.println("Config command");
+    DEBUGLN("Config command");
     if (command_buf[0] & (1 << CMD_CFG_SPECIAL_BV))  //Special config commands
     {
       Serial.println("Special config command");
@@ -1200,7 +1313,10 @@ bool check_cmd_1st_stage()
           return true;
       }
     }
-    check_cmd = & check_cfgcmd_2nd_stage;  // it is a normal config command set the check cmd accordingly
+    if (command_buf[0] & (1<<CMD_CFG_DEL_BV))
+      check_cmd = & check_del_cfgcmd_2nd_stage; // delete config command
+    else
+      check_cmd = & check_cfgcmd_2nd_stage;  // it is a normal config command set the check cmd accordingly
     return false;
   }
   check_cmd = &check_rwcmd_2nd_stage;  //now set the check cmd pointer to the 2nd stage rw command
