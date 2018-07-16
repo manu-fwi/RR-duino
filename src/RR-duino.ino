@@ -293,8 +293,8 @@ void send_simple_answer(byte err) {
 
 int write_one_turnout(byte subadd)
 {
-  Serial.print("Turnout command:");
-  Serial.println(subadd);
+  DEBUG("Turnout command:");
+  DEBUGLN(subadd);
   turnout_cfg_t * turnout = find_cfg_turnout(subadd & 0x3F);
   if (!turnout) {
     Serial.println("Unknown turnout!");
@@ -307,7 +307,7 @@ int write_one_turnout(byte subadd)
     turnout->status |= 1 << TURNOUT_BV_POS;
   else
     turnout->status &= ~(1 << TURNOUT_BV_POS);
-  Serial.println(turnout->status,HEX);
+  DEBUGLN(turnout->status);
   return 0; // No error
 }
 
@@ -365,13 +365,61 @@ void write_several()
 
 void write_all_turnouts()
 {
-  Serial.println("Writing to all turnouts");
+  DEBUGLN("Writing to all turnouts");
+  byte pos=2;        // current byte in the commmand
+  byte bit_index=6; // bit number in the current byte (MSB is not used for values)
+  
+  turnout_cfg_t * turn;
+  for (turn = turnout_cfg_head;turn;turn=turn->next) {
+    if ((bit_index==0) && (command_buf[pos] & 0x80)) // this must be the end of the bits stream
+      break;
+    byte turn_pos = (command_buf[pos]>> SUB_VALUE_BV) & 0x01;
+    // Put it in "moving state" and set new position
+    turn->status |= (1 << TURNOUT_BV_MOV);
+    if (turn_pos)
+      turn->status |= 1 << TURNOUT_BV_POS;
+    else
+      turn->status &= ~(1 << TURNOUT_BV_POS);
+    if (bit_index==0) { // next byte
+      bit_index = 6;
+      pos+=1;
+    }
+    else
+      bit_index--;
+  }
+  if (turn) {
+    DEBUGLN("Not all turnouts have been written to!");
+  }
   send_simple_answer(0);
 }
 
 void write_all_sensors()
 {
-  Serial.println("Writing to all sensors");
+  DEBUGLN("Writing to all sensors");
+  byte pos=2;        // current byte in the commmand
+  byte bit_index=6; // bit number in the current byte (MSB is not used for values)
+  
+  sensor_cfg_t * sensor;
+  for (sensor = sensor_cfg_head;sensor;sensor=sensor->next) {
+    if (!(sensor->status & (1<<SENSOR_BV_IO))) { // Process only output sensors
+      if ((bit_index==0) && (command_buf[pos] & 0x80)) // this must be the end of the bits stream
+        break;
+     byte sensor_val = (command_buf[pos] >> SUB_VALUE_BV) & 0x01;
+      if (sensor_val)
+        sensor->status |= 1;
+      else
+        sensor->status &= 0xFE;
+      if (bit_index==0) { // next byte
+        bit_index = 6;
+        pos+=1;
+      }
+      else
+        bit_index--;
+    }
+  }
+  if (sensor) {
+    DEBUGLN("Not all turnouts have been written to!");
+  }
   send_simple_answer(0);
 }
 
