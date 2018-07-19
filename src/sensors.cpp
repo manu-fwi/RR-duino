@@ -101,7 +101,7 @@ sensor_cfg_t * read_cfg_sensor(int ee_add)  // read sensor_cfg_t struct in eepro
 
 void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
 {
-  DEBUG("Save sensor ");
+  DEBUG(F("Save sensor "));
   DEBUG(eeprom_sensor_end);
   DEBUG(" ");
   DEBUG(ee_add);
@@ -132,7 +132,7 @@ void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
 void update_cfg_sensor(byte subadd,byte pin,byte status,int ee_add=-1)
 {
   // Save to eeprom
-  DEBUGLN("update sensor");
+  DEBUGLN(F("update sensor"));
   if (ee_add<0)
     ee_add = ee_find_cfg_sensor(subadd);
   if (ee_add<0)
@@ -188,14 +188,14 @@ bool check_all_sensors()
         // Same state, check if we can validate it
         if (current->last_time && (millis()>current->last_time+SENSOR_DEBOUNCE)) {
           byte change = (current->status&0x01) ^ temp;
-          DEBUG("CHANGING STABILIZED ");
+          DEBUG(F("CHANGING STABILIZED "));
           DEBUGLN(current->status&0x01);
           DEBUGLN(temp);
           DEBUGLN(change);
           current->last_time = 0;   // No need to go on detecting after now
           if (change) {
             current->status = (current->status & 0xFE)+temp; // Validate the new state
-             DEBUG("CHNG STATE=");
+             DEBUG(F("CHNG STATE="));
             DEBUGLN(current->status & (1<<SENSOR_BV_CHNG_STATE));
             if ((current->status & (1<<SENSOR_BV_CHNG_STATE))==0)
             {

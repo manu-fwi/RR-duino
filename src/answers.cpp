@@ -15,7 +15,7 @@ void send_answers(unsigned limit)
   unsigned i=0;
   if (limit==0)
     limit = 1000;
-  DEBUG("Send answers ");
+  DEBUG(F("Send answers "));
   DEBUG(limit);
   // First send any turnout async answer
   while ((i<limit) && answers_head) {
@@ -25,7 +25,7 @@ void send_answers(unsigned limit)
         answers_head->data[0] |= (1 << CMD_PEND_ANSWERS_BV) | (1 << CMD_ASYNC_BV);
       }
     }
-    DEBUGLN("SENDING ANSWER");
+    DEBUGLN(F("SENDING ANSWER"));
     to_bus.write(0xFF); // Start byte
     for (byte j=0;j<answers_head->len;j++)
       to_bus.write(answers_head->data[j]);
@@ -45,7 +45,7 @@ void send_async_events(unsigned limit)
   bool empty_answer=true;
   // First send any turnout async answer
   while ((i<limit) && async_head) {
-    DEBUGLN("ASYNC EVENTS, NON SENSOR RELATED");
+    DEBUGLN(F("ASYNC EVENTS, NON SENSOR RELATED"));
     if (!(async_head->next)) { // last answer to be sent
       // We need to check if we set the other answers pending (in case of async events waiting)
       if (sensors_chng_state) { // any input changed or async events waiting?
@@ -67,11 +67,11 @@ void send_async_events(unsigned limit)
   data[0]=(1<<CMD_ASYNC_BV);  // as a read sensor command, async bit set
   data[1]=address | (1 << ADD_LIST_BV);  // Its a list
   byte len=2;
-  DEBUG("SENSORS ASYNCS:");
+  DEBUG(F("SENSORS ASYNCS:"));
   DEBUGLN(sensors_chng_state);
 
   while ((i<limit) && sensors_chng_state && sens) {
-    DEBUG("before=");
+    DEBUG(F("before="));
     DEBUG(sens->subadd);
     DEBUG(" ");
     DEBUGLN(sensors_chng_state);
@@ -95,7 +95,7 @@ void send_async_events(unsigned limit)
         }
       }
     }
-     DEBUG("after=");
+     DEBUG(F("after="));
     DEBUGLN(sensors_chng_state);
     sens = sens->next;  // Next sensor
   }
@@ -114,7 +114,7 @@ void send_async_events(unsigned limit)
 // The answer that was last is modified to signal that now there is another answer after it
 void queue_answer(byte * data, byte len)
 {
-  DEBUG("Queueing answer of length ");
+  DEBUG(F("Queueing answer of length "));
   DEBUGLN(len);
   answer_t * answ = new struct answer_t;
   answ->data = data;
@@ -135,11 +135,11 @@ void queue_async_turnout(turnout_cfg_t * turnout)
 {
   answer_t * answ = async_head;
   for (;answ && answ->next;answ=answ->next);  // Find the last of the list
-  DEBUG("QUEUE ASYNC TURNOUT=");
+  DEBUG(F("QUEUE ASYNC TURNOUT="));
   DEBUG(turnout->subadd);
-  DEBUG(",pos=");
+  DEBUG(F(",pos="));
   DEBUG(turnout->current_pos);
-  DEBUG(",status=");
+  DEBUG(F(",status="));
   DEBUGLN(turnout->status);
   if (!answ || (answ->len>MAX_CMD_LEN-2)) { // empty list or last answer is full
     // create a new answer

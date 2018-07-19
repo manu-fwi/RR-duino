@@ -186,7 +186,7 @@ turnout_cfg_t * read_cfg_turn(int ee_add)  // read cfg_turnout_t struct in eepro
   cfg->next = NULL;
   cfg->status = 1 << 7 + NO_SERVO;
   cfg->current_pos = UNVALID_POS;
-  DEBUG("turnout read from eeprom:");
+  DEBUG(F("turnout read from eeprom:"));
   DEBUG(cfg->subadd);
   DEBUG(",");
   DEBUG(cfg->servo_pin);
@@ -232,7 +232,7 @@ void update_cfg_turnout(turnout_cfg_t * cfg, int ee_add=-1) //update turnout cfg
   EEPROM.update(ee_add++,cfg->thrown_pos);
   EEPROM.update(ee_add++,cfg->relay_pin_1);
   EEPROM.update(ee_add++,cfg->relay_pin_2);
-  DEBUGLN("update cfg_t");
+  DEBUGLN(F("update cfg_t"));
 }
 
 void save_cfg_turnout(int ee_add,turnout_cfg_t * cfg)  // Save new cfg turnout
