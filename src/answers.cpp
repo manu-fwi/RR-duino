@@ -78,6 +78,7 @@ void send_async_events(unsigned limit)
     if (sens->status & (1 << SENSOR_BV_IO)) {
       if (sens->status & (1<<SENSOR_BV_CHNG_STATE)) {
         sensors_chng_state--;
+        empty_answer = false;
         sens->status &= ~(1<<SENSOR_BV_CHNG_STATE); // Reset changed state
         // Input sensor, send last validated state
         data[len++]=sens->subadd | ((sens->status & 0x01) << SUB_VALUE_BV);
@@ -91,7 +92,6 @@ void send_async_events(unsigned limit)
           }
           i++;
           len = 2;
-          empty_answer = false;
         }
       }
     }
@@ -163,4 +163,3 @@ void queue_async_turnout(turnout_cfg_t * turnout)
   else
     answ->data[answ->len++]=turnout->subadd;
 }
-
