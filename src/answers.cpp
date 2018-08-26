@@ -17,12 +17,12 @@ void send_answers(unsigned limit)
     limit = 1000;
   DEBUG(F("Send answers "));
   DEBUG(limit);
-  // First send any turnout async answer
+
   while ((i<limit) && answers_head) {
     if (!(answers_head->next)) { // last answer to be sent
       // We need to check if we set the other answers pending (in case of async events waiting)
       if ((sensors_chng_state) || async_head) { // any input changed or async events waiting?
-        answers_head->data[0] |= (1 << CMD_PEND_ANSWERS_BV) | (1 << CMD_ASYNC_BV);
+        answers_head->data[0] |= (1 << CMD_ASYNC_BV);
       }
     }
     DEBUGLN(F("SENDING ANSWER"));
@@ -49,7 +49,7 @@ void send_async_events(unsigned limit)
     if (!(async_head->next)) { // last answer to be sent
       // We need to check if we set the other answers pending (in case of async events waiting)
       if (sensors_chng_state) { // any input changed or async events waiting?
-        async_head->data[0] |= (1 << CMD_PEND_ANSWERS_BV);
+        async_head->data[0] |= (1 << CMD_PEND_ANSWERS_BV) | (1 << CMD_PEND_ANSWERS_BV);
       }
     }
     for (byte j=0;j<async_head->len;j++)
@@ -99,7 +99,7 @@ void send_async_events(unsigned limit)
     DEBUGLN(sensors_chng_state);
     sens = sens->next;  // Next sensor
   }
-  if (empty_answer) { // incase no event was to be reported, send an empty answer
+  if (empty_answer) { // in  case no event was to be reported, send an empty answer
     data[0]= 0b00000100; // nothing to be reported
     data[1]=address;
     to_bus.write(0xFF); // Start byte

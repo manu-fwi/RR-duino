@@ -203,7 +203,7 @@ void send_simple_answer(byte err) {
   DEBUG(F("SEND SIMPLE ANSWER:"));
   DEBUGLN(sensors_chng_state);
   if ((sensors_chng_state>0) || async_head)
-    command_buf[0] |= (1 << CMD_PEND_ANSWERS_BV) | (1<<CMD_ASYNC_BV);  // Set pending async events
+    command_buf[0] |= (1<<CMD_ASYNC_BV);  // Set pending async events
 
   for (byte i=0;i<3;i++)
     to_bus.write(command_buf[i]);
@@ -482,7 +482,7 @@ void read_several()
     int val = (*func)(command_buf[pos] & 0x3F);
     if (val<0) {
       command_buf[pos]=0x80 | (-val); // set error code
-      send_one_msg(command_buf,pos);
+      send_one_msg(command_buf,pos+1);
       return;
     }
     if (val)
@@ -527,7 +527,7 @@ byte show_one_sensor(sensor_cfg_t * sensor, byte * data)
 }
 
 // data points to the part of a buffer where the function puts
-// the subaddress and the pin number with correct bits set (I/O, pullup,...)
+// the subaddress and the servo pin number with correct bits set
 // returns the number of bytes used
 byte show_one_turnout(turnout_cfg_t * turn, byte * data)
 {
@@ -539,6 +539,9 @@ byte show_one_turnout(turnout_cfg_t * turn, byte * data)
   {
     // Set relay_pin bit
     data[0] |= (1<<SUB_RELAY_PIN_BV);
+    DEBUG(F("relay pins! = "));
+    DEBUGLN(turn->relay_pin_1);
+    DEBUGLN(turn->relay_pin_2);
     data[4]=turn->relay_pin_1 | (1<<PIN_RELAY_PULSE_BV); // For now only latching relays so pulse
     data[5]=turn->relay_pin_2 | (1<<PIN_RELAY_PULSE_BV); // For now only latching relays so pulse
     return 6;
@@ -598,8 +601,9 @@ int config_one_turnout(byte pos)
   byte subadd = command_buf[pos] & 0x3F;
   byte cfg_size = 4;
   
-  turnout_cfg_t * cfg = find_cfg_turnout(subadd & 0x3F);
+  turnout_cfg_t * cfg = find_cfg_turnout(subadd);
   if (cfg) {
+    DEBUGLN(F("Updating turnout"));
     // exists already, update it
     cfg->servo_pin=command_buf[pos+1] & 0x7F;  // For now all relays are pulsed (latching relays)
     cfg->straight_pos = command_buf[pos+2];
@@ -607,6 +611,10 @@ int config_one_turnout(byte pos)
     if (command_buf[pos] & (1<<SUB_RELAY_PIN_BV)) { // relay pins present
       cfg->relay_pin_1 = command_buf[pos+4];
       cfg->relay_pin_2 = command_buf[pos+5];
+      DEBUG(F("relay pins = "));
+      DEBUG(cfg->relay_pin_1);
+      DEBUG(" ");
+      DEBUGLN(cfg->relay_pin_2);
       cfg_size = 6;
     } else { // no relay pins
       cfg->relay_pin_1 = 0xFE;
@@ -638,6 +646,10 @@ int config_one_turnout(byte pos)
       cfg->relay_pin_1 = 0xFE;
       cfg->relay_pin_2 = 0xFE;
     }
+    DEBUG(F("New turnout, relay pins = "));
+    DEBUG(cfg->relay_pin_1);
+    DEBUG(" ");
+    DEBUGLN(cfg->relay_pin_2);
     cfg->status = NO_SERVO;
     // Put the config into the list, but respect the order by the subaddress
     turnout_cfg_t * place = find_last_turn_before(cfg->subadd);
@@ -658,7 +670,12 @@ int config_one_turnout(byte pos)
   DEBUG(" ");
   DEBUG(cfg->straight_pos);
   DEBUG(" ");
-  DEBUGLN(cfg->thrown_pos);
+  DEBUG(cfg->thrown_pos);
+  DEBUG(" ");
+  DEBUG(cfg->relay_pin_1);
+  DEBUG(" ");
+  DEBUGLN(cfg->relay_pin_2);
+
   config_pins_turnout(cfg);
 
   return cfg_size;
@@ -902,7 +919,8 @@ void process_turnouts()
 
 void version_cmd()
 {
-  byte msg[]={1<<CMD_CFGCMD_BV,address,version_nb};
+  byte msg[]={(1<<CMD_CFGCMD_BV)|(1 << CMD_CFG_SPECIAL_BV),address,version_nb};
+  DEBUGLN(F("Version"));
   send_one_msg(msg,3);
 }
 
@@ -913,7 +931,6 @@ void set_address(byte add)
     DEBUGLN(add);
     digitalWrite(13,LOW);
     address = add;
-    EEPROM.write(0,add);
     send_simple_answer(0);
   } else DEBUGLN(F("Set address but not in address mode"));  // No reply here it was not meant for us
 }
@@ -968,7 +985,7 @@ void async_cmd(byte limit)
 void send_one_msg(byte * msg,byte len)
 {
   if ((sensors_chng_state>0) || async_head)
-    msg[0] |= (1 << CMD_PEND_ANSWERS_BV) | (1<<CMD_ASYNC_BV);  // Set pending async events
+    msg[0] |=  (1<<CMD_ASYNC_BV);  // Set pending async events
   to_bus.write(0xFF); // Start byte
   for (byte i=0;i<len;i++)
     to_bus.write(msg[i]);
@@ -1055,7 +1072,7 @@ bool check_cfgcmd_2nd_stage()
   // Only one config
   if (command_buf[0] & (1<<CMD_CFG_SENS_TURN_BV)) { // turnout config
     byte cfg_size = 2 + 4;
-    if (command_buf[1] & (1<<SUB_RELAY_PIN_BV))
+    if (command_buf[2] & (1<<SUB_RELAY_PIN_BV))
       cfg_size+=2;
     if (cmd_pos == cfg_size) { // complete!
       int err = config_one_turnout(2);
@@ -1172,50 +1189,52 @@ bool check_del_cfgcmd_2nd_stage()
 
 void save_config()
 {
+  int err = 0; // No error
   // Turnouts first
   turnout_cfg_t * turn = turnout_cfg_head;
+  DEBUGLN(F("saveconfig, turnouts first"));
   while (turn)
   {
-    int ee_add = ee_find_cfg_turnout(turn->subadd);
-    if (ee_add<0) { // new config, add it in EEPROM
-      ee_add = ee_find_free_turnout();
-      if (ee_add>0)
-        save_cfg_turnout(ee_add, turn);
-      else {
-        // FIXME
-        DEBUGLN(F("Full EEPROM"));
+    if ((turn->status & (1<<TURNOUT_BV_SYNC))==0) {
+      int ee_add = ee_find_cfg_turnout(turn->subadd);
+      if (ee_add<0) { // new config, add it in EEPROM
+        ee_add = ee_find_free_turnout();
+        if (ee_add>0)
+          save_cfg_turnout(ee_add, turn);
+        else {
+          // FIXME
+          DEBUGLN(F("Full EEPROM"));
+          err = EEPROM_FULL;
+        }
       }
+      else
+        update_cfg_turnout(turn, ee_add);
     }
-    else
-      update_cfg_turnout(turn, ee_add);
     turn = turn->next;
   }
   //Sensors
   sensor_cfg_t * sensor = sensor_cfg_head;
+  DEBUGLN(F("Now sensors"));
   while (sensor)
   {
-    int ee_add = ee_find_cfg_sensor(sensor->subadd);
-    if (ee_add<0) { // new config, add it in EEPROM
-      ee_add = ee_find_free_sensor();
-      if (ee_add>0)
-        save_cfg_sensor(ee_add, sensor);
-      else {
-        // FIXME
-        DEBUGLN(F("Full EEPROM"));
+    if ((sensor->status & (1<<SENSOR_BV_SYNC))==0) {
+      int ee_add = ee_find_cfg_sensor(sensor->subadd);
+      if (ee_add<0) { // new config, add it in EEPROM
+        ee_add = ee_find_free_sensor();
+        if (ee_add>0)
+          save_cfg_sensor(ee_add, sensor);
+        else {
+          // FIXME
+          DEBUGLN(F("Full EEPROM"));
+          err = EEPROM_FULL;
+        }
       }
+      else
+        update_cfg_sensor(sensor->subadd, sensor->sensor_pin,sensor->status,ee_add);
     }
-    else
-      update_cfg_sensor(sensor->subadd, sensor->sensor_pin,sensor->status,ee_add);
     sensor = sensor->next;
   }
-     DEBUG(F("Dump "));
-  for (int add = eeprom_sensor_end;add<EEPROM.length();add+=CFG_SENSOR_SIZE)
-  {
-    DEBUG(EEPROM.read(add));
-    DEBUG(",");
-    DEBUGLN(EEPROM.read(add+1));
-    
-  }
+  send_simple_answer(err);
 }
 
 // Checks if address is correct and command is complete then calls the corresponding function

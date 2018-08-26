@@ -23,7 +23,7 @@ struct sensor_cfg_t
   byte subadd;      // subadd >= 1 as 0 is used to signal the end of the list in eeprom
   byte sensor_pin;
   /*
-   *  B7=1 => sync in eeprom
+   *  B7=1 => synced in eeprom
    *  B6=I/0: 1=> Input / 0=> Output
    *  B5=1 => Pullup (if setup as Input)
    *  

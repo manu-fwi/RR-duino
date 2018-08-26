@@ -32,7 +32,7 @@ struct turnout_cfg_t
   byte relay_pin_1; // activated when set to straight (=254 if unneeded)
   byte relay_pin_2; // activated when set to thrown (=254 if unneeded)
   /*
-   *  B7=1 => sync in eeprom
+   *  B7=1 => synced in eeprom
    *  B6=0: not moving =1:moving
    *  B5=1 => in thrown position or moving from straight to thrown
    *  B5=0 => in straight position or moving from thrown to straight

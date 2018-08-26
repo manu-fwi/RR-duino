@@ -41,7 +41,7 @@ extern bool save_cfg_to_eeprom;
 #define EEPROM_FULL 1
 #define MEMORY_FULL 2
 #define UNKNOWN_DEV 3
-#define UNVALID_DEV 3
+#define UNVALID_DEV 4
 
 // Other constants
 #define MAX_CMD_LEN 63  // 64-1 we do not put the start byte into the buffer
