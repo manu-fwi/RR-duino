@@ -13,10 +13,9 @@ extern bool save_cfg_to_eeprom;
 
 // Define for the command bits positions
 #define CMD_CFGCMD_BV 7
-#define CMD_RWDIR_BV 4
-#define CMD_SENS_TURN_BV 5
+#define CMD_RWDIR_BV 5
 #define CMD_ALL_BV 6
-#define CMD_CFG_SENS_TURN_BV 4
+#define CMD_SENS_TURN_BV 4
 #define CMD_CFG_DEL_BV 5
 #define CMD_CFG_SPECIAL_BV 3
 #define CMD_CFG_SPECIAL_EEPROM_BV 4

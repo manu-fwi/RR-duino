@@ -158,8 +158,10 @@ void clear_eeprom(bool answer=true)
 
 void setup() {
   //clear_eeprom(false);
+#ifdef DEBUG
    Serial.begin(115200);
   while(!Serial);
+#endif // DEBUG
   DEBUGLN("Started");
   to_bus.begin(19200);
   delay(1000);
@@ -408,7 +410,7 @@ void delete_several()
 {
   int (*func)(byte); // pointer on the func to be called
   // choose turnout/sensor according to command byte
-  if (command_buf[0] & CMD_CFG_SENS_TURN_BV)
+  if (command_buf[0] & CMD_SENS_TURN_BV)
     func = &delete_one_turnout;
   else
     func = &delete_one_sensor;
@@ -741,7 +743,7 @@ int config_one_sensor(byte pos)
 void config_several()
 {
   int (*func)(byte);
-  if (command_buf[0] & (1<<CMD_CFG_SENS_TURN_BV))
+  if (command_buf[0] & (1<<CMD_SENS_TURN_BV))
     func = &config_one_turnout;
   else
     func = &config_one_sensor;
@@ -1000,7 +1002,7 @@ bool check_show_cmd_2nd_stage()
   DEBUG(F("SHOW CMD "));
   DEBUGLN(cmd_pos);
   if (cmd_pos==3) { // complete!
-    if (command_buf[0] & (1 << CMD_CFG_SENS_TURN_BV))
+    if (command_buf[0] & (1 << CMD_SENS_TURN_BV))
       show_turnouts_cmd(command_buf[2]);
     else
       show_sensors_cmd(command_buf[2]);
@@ -1052,7 +1054,7 @@ bool check_cfgcmd_2nd_stage()
   if (cmd_pos < 4) // We need at least one config which is 2 bytes min +command+address bytes
     return false;
   if (command_buf[1] & (1<<ADD_LIST_BV)) { //Several configs
-    if (command_buf[0] & (1<<CMD_CFG_SENS_TURN_BV)) { // turnout config
+    if (command_buf[0] & (1<<CMD_SENS_TURN_BV)) { // turnout config
       //check if we have just begun a turnout config and if it is a termination (0x80)
       DEBUG(F("TURNOUT CONFIG "));
       DEBUGLN(cmd_pos);
@@ -1070,7 +1072,7 @@ bool check_cfgcmd_2nd_stage()
     return false;
   }
   // Only one config
-  if (command_buf[0] & (1<<CMD_CFG_SENS_TURN_BV)) { // turnout config
+  if (command_buf[0] & (1<<CMD_SENS_TURN_BV)) { // turnout config
     byte cfg_size = 2 + 4;
     if (command_buf[2] & (1<<SUB_RELAY_PIN_BV))
       cfg_size+=2;
@@ -1174,7 +1176,7 @@ bool check_del_cfgcmd_2nd_stage()
   }
   // Read or write on one subaddress only
   if (cmd_pos == 3) { // Complete!
-    if (command_buf[0] & (1 << CMD_CFG_SENS_TURN_BV)) {
+    if (command_buf[0] & (1 << CMD_SENS_TURN_BV)) {
       int err = delete_one_turnout(command_buf[2]);
       send_simple_answer(-err);
     }
