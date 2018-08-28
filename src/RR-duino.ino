@@ -996,21 +996,6 @@ void send_one_msg(byte * msg,byte len)
 long unsigned last_run = 0;
 bool (*check_cmd)(void)=NULL;  // function pointer to the current check command function
 
-// Check and decode show command
-bool check_show_cmd_2nd_stage()
-{
-  DEBUG(F("SHOW CMD "));
-  DEBUGLN(cmd_pos);
-  if (cmd_pos==3) { // complete!
-    if (command_buf[0] & (1 << CMD_SENS_TURN_BV))
-      show_turnouts_cmd(command_buf[2]);
-    else
-      show_sensors_cmd(command_buf[2]);
-    return true;
-  }
-  return false;
-}
-
 bool check_turnout_fine_cmd_2nd_stage()
 {
   if (cmd_pos<4)
@@ -1287,8 +1272,11 @@ bool check_cmd_1st_stage()
         case 0b100:
         case 0b101:
           // show command
-          check_cmd = &check_show_cmd_2nd_stage;
-          return false;
+          if (command_buf[0] & (1 << CMD_SENS_TURN_BV))
+            show_turnouts_cmd(command_buf[2]);
+          else
+            show_sensors_cmd(command_buf[2]);          
+          return true;
         case 0b110:
           // Turnout fine tuning, set the check function accordingly
           check_cmd = & check_turnout_fine_cmd_2nd_stage;
