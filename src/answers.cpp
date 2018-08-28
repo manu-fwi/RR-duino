@@ -10,26 +10,18 @@ answer_t * answers_head=0;
 //List of async events related to turnouts
 answer_t * async_head = 0;
 
-void send_answers(unsigned limit)
+void send_answers()
 {
-  unsigned i=0;
-  if (limit==0)
-    limit = 1000;
-  DEBUG(F("Send answers "));
-  DEBUG(limit);
+  DEBUGLN(F("Send answers "));
 
-  while ((i<limit) && answers_head) {
-    if (!(answers_head->next)) { // last answer to be sent
-      // We need to check if we set the other answers pending (in case of async events waiting)
-      if ((sensors_chng_state) || async_head) { // any input changed or async events waiting?
-        answers_head->data[0] |= (1 << CMD_ASYNC_BV);
-      }
+  if (answers_head) {
+    if ((sensors_chng_state) || async_head) { // any input changed or async events waiting?
+      answers_head->data[0] |= (1 << CMD_ASYNC_BV);
     }
     DEBUGLN(F("SENDING ANSWER"));
     to_bus.write(0xFF); // Start byte
     for (byte j=0;j<answers_head->len;j++)
       to_bus.write(answers_head->data[j]);
-    i++;
     delete answers_head->data;
     answer_t * temp = answers_head;
     answers_head = answers_head->next;
@@ -37,77 +29,69 @@ void send_answers(unsigned limit)
   }
 }
 
-void send_async_events(unsigned limit)
+void send_async_events()
 {
-  unsigned i=0;
-  if (limit==0)
-  limit = 1000;
   bool empty_answer=true;
   // First send any turnout async answer
-  while ((i<limit) && async_head) {
+  if (async_head) {
     DEBUGLN(F("ASYNC EVENTS, NON SENSOR RELATED"));
     if (!(async_head->next)) { // last answer to be sent
       // We need to check if we set the other answers pending (in case of async events waiting)
       if (sensors_chng_state) { // any input changed or async events waiting?
-        async_head->data[0] |= (1 << CMD_PEND_ANSWERS_BV) | (1 << CMD_PEND_ANSWERS_BV);
+        async_head->data[0] |= (1 << CMD_PEND_ANSWERS_BV);
       }
     }
     for (byte j=0;j<async_head->len;j++)
       to_bus.write(async_head->data[j]);
-    i++;
     delete async_head->data;
     answer_t * temp = async_head;
     async_head = async_head->next;
     delete temp;
-    empty_answer = false;
-  }
-  // Now send all sensors state changes
-  sensor_cfg_t * sens = sensor_cfg_head;
-  byte * data = new byte[MAX_CMD_LEN];
-  data[0]=(1<<CMD_ASYNC_BV);  // as a read sensor command, async bit set
-  data[1]=address | (1 << ADD_LIST_BV);  // Its a list
-  byte len=2;
-  DEBUG(F("SENSORS ASYNCS:"));
-  DEBUGLN(sensors_chng_state);
-
-  while ((i<limit) && sensors_chng_state && sens) {
-    DEBUG(F("before="));
-    DEBUG(sens->subadd);
-    DEBUG(" ");
+  } else {
+    // Now send all sensors state changes
+    sensor_cfg_t * sens = sensor_cfg_head;
+    byte * data = new byte[MAX_CMD_LEN];
+    data[0]=(1<<CMD_ASYNC_BV);  // as a read sensor command, async bit set
+    data[1]=address | (1 << ADD_LIST_BV);  // Its a list
+    byte len=2;
+    DEBUG(F("SENSORS ASYNCS:"));
     DEBUGLN(sensors_chng_state);
-    if (sens->status & (1 << SENSOR_BV_IO)) {
-      if (sens->status & (1<<SENSOR_BV_CHNG_STATE)) {
-        sensors_chng_state--;
-        empty_answer = false;
-        sens->status &= ~(1<<SENSOR_BV_CHNG_STATE); // Reset changed state
-        // Input sensor, send last validated state
-        data[len++]=sens->subadd | ((sens->status & 0x01) << SUB_VALUE_BV);
-        if ((len > MAX_CMD_LEN-2) || !sensors_chng_state) { // no more space or last change
-          if (sensors_chng_state)
-            data[0] |= (1 << CMD_PEND_ANSWERS_BV); // more to come
-          data[len++]=0x80;  // Indicates last subaddress
-          to_bus.write(0xFF); // Start byte
-          for (byte j=0;j<len;j++) {
-            to_bus.write(data[j]);
+  
+    while (sensors_chng_state && sens) {
+      DEBUG(F("sensor change state="));
+      DEBUG(sens->subadd);
+      DEBUG(" ");
+      DEBUGLN(sensors_chng_state);
+      if (sens->status & (1 << SENSOR_BV_IO)) {
+        if (sens->status & (1<<SENSOR_BV_CHNG_STATE)) {
+          sensors_chng_state--;
+          empty_answer = false;
+          sens->status &= ~(1<<SENSOR_BV_CHNG_STATE); // Reset changed state
+          // Input sensor, send last validated state
+          data[len++]=sens->subadd | ((sens->status & 0x01) << SUB_VALUE_BV);
+          if ((len > MAX_CMD_LEN-2) || !sensors_chng_state) { // no more space or last change
+            if (sensors_chng_state)
+              data[0] |= (1 << CMD_PEND_ANSWERS_BV); // more to come
+            data[len++]=0x80;  // Indicates last subaddress
+            to_bus.write(0xFF); // Start byte
+            for (byte j=0;j<len;j++) {
+              to_bus.write(data[j]);
+            }
           }
-          i++;
-          len = 2;
         }
       }
+      sens = sens->next;  // Next sensor
     }
-     DEBUG(F("after="));
-    DEBUGLN(sensors_chng_state);
-    sens = sens->next;  // Next sensor
-  }
-  if (empty_answer) { // in  case no event was to be reported, send an empty answer
-    data[0]= 0b00000100; // nothing to be reported
-    data[1]=address;
-    to_bus.write(0xFF); // Start byte
-    for (byte j=0;j<2;j++) {
-      to_bus.write(data[j]);
+    if (empty_answer) { // in  case no event was to be reported, send an empty answer
+      data[0]= 0b00000100; // nothing to be reported
+      data[1]=address;
+      to_bus.write(0xFF); // Start byte
+      for (byte j=0;j<2;j++) {
+        to_bus.write(data[j]);
+      }
     }
+    delete data;    
   }
-  delete data;
 }
 
 // Queue a new answer to a list of answers
@@ -141,7 +125,8 @@ void queue_async_turnout(turnout_cfg_t * turnout)
   DEBUG(turnout->current_pos);
   DEBUG(F(",status="));
   DEBUGLN(turnout->status);
-  if (!answ || (answ->len>MAX_CMD_LEN-2)) { // empty list or last answer is full
+  if (!answ || (answ->len>MAX_CMD_LEN-3)) {
+    // empty list or last answer is full (we need 2 bytes for the turnout config plus the end list byte (0x80)
     // create a new answer
     answer_t * p = new struct answer_t;
     p->data = new byte[MAX_CMD_LEN];

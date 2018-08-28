@@ -570,7 +570,7 @@ void show_sensors_cmd(byte limit)
       }
     }
   }
-  send_answers(limit); // send them; some might not be sent (depending on the limit), they will be sent on the next show command
+  send_answers(); // send them; some might not be sent (depending on the limit), they will be sent on the next show command
 }
 
 void show_turnouts_cmd(byte limit)
@@ -592,7 +592,7 @@ void show_turnouts_cmd(byte limit)
       }
     }
   }
-  send_answers(limit); // send them; some might not be sent (depending on the limit), they will be sent on the next show command
+  send_answers(); // send them; some might not be sent (depending on the limit), they will be sent on the next show command
 }
 
 // Read the config of a turnout from the command buf at pos
@@ -977,10 +977,10 @@ void set_turnout_pos()
   }
 }
 */
-void async_cmd(byte limit)
+void async_cmd()
 {
   DEBUGLN(F("Sending async events"));
-  send_async_events(limit);
+  send_async_events();
 }
 
 // send msg on the bus
@@ -1261,7 +1261,7 @@ bool check_cmd_1st_stage()
 
   if (command_buf[0] & (1 << CMD_ASYNC_BV)) {
     // ASYNC command
-    async_cmd(command_buf[0] >> 3);
+    async_cmd();
     return true;  
   }
   if (command_buf[0] & (1 << CMD_CFGCMD_BV))  // Config commands

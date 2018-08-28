@@ -106,16 +106,19 @@ void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
   DEBUG(" ");
   DEBUG(ee_add);
   DEBUG(" ");
-  byte i = sensor->subadd;
-  byte j = sensor->sensor_pin;
+  byte subadd = sensor->subadd;
+  byte pin = sensor->sensor_pin;
   // Save to eeprom: set bits in subadd and servo_pin according to status
   if (sensor->status & (1 << SENSOR_BV_IO)) {
-    i |= (1<<EE_SENSOR_SUB_IO_BV);
+    subadd |= (1<<EE_SENSOR_SUB_IO_BV);
     if (sensor->status & (1 << SENSOR_BV_PULLUP))
-      j |= (1 << EE_SENSOR_PIN_PULLUP_BV);
+      pin |= (1 << EE_SENSOR_PIN_PULLUP_BV);
   }
-  EEPROM.write(ee_add, i);
-  EEPROM.write(ee_add+1,j);
+  if (sensor->status & 1)
+    subadd |= (1 << EE_SENSOR_SUB_VALUE_BV);
+    
+  EEPROM.write(ee_add, subadd);
+  EEPROM.write(ee_add+1,pin);
   // Mark as saved in eeprom
   sensor->status |= (1 << SENSOR_BV_SYNC);
   ee_add-=CFG_SENSOR_SIZE;
@@ -123,9 +126,9 @@ void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
     eeprom_sensor_end=ee_add;
     EEPROM.write(eeprom_sensor_end,0);  // Marks the end of the sensors
   }
-  DEBUG(i);
+  DEBUG(subadd);
   DEBUG(" ");
-  DEBUGLN(j);
+  DEBUGLN(pin);
   DEBUGLN(eeprom_sensor_end);
 }
 
@@ -142,6 +145,9 @@ void update_cfg_sensor(byte subadd,byte pin,byte status,int ee_add=-1)
   if (status & (1 << SENSOR_BV_IO))
     subadd |= (1<<EE_SENSOR_SUB_IO_BV);
       
+  if (status & 1)
+    subadd |= (1 << EE_SENSOR_SUB_VALUE_BV);
+
   EEPROM.write(ee_add, subadd);
   
   if (status & (1 << SENSOR_BV_PULLUP))
@@ -195,6 +201,7 @@ bool check_all_sensors()
           current->last_time = 0;   // No need to go on detecting after now
           if (change) {
             current->status = (current->status & 0xFE)+temp; // Validate the new state
+            //FIXME
              DEBUG(F("CHNG STATE="));
             DEBUGLN(current->status & (1<<SENSOR_BV_CHNG_STATE));
             if ((current->status & (1<<SENSOR_BV_CHNG_STATE))==0)
