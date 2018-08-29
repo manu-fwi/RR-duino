@@ -143,7 +143,7 @@ void queue_async_turnout(turnout_cfg_t * turnout)
       async_head = p;
     answ = p;
   }
-  if (turnout->status & (1 << TURNOUT_BV_POS))
+  if (turnout->status & (1 << TURNOUT_POS_BV))
     answ->data[answ->len++]=turnout->subadd | (1<<SUB_VALUE_BV); // Add turnout subadd with value
   else
     answ->data[answ->len++]=turnout->subadd;

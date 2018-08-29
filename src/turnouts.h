@@ -15,9 +15,9 @@
 
 #define UNVALID_POS 0xFF   // Indicates that the turnout has not been positioned at all
 
-#define TURNOUT_BV_SYNC 7
-#define TURNOUT_BV_MOV 6
-#define TURNOUT_BV_POS 5
+#define TURNOUT_SYNC_BV 7
+#define TURNOUT_MOV_BV 6
+#define TURNOUT_POS_BV 5
 
 #define RELAY_PULSE_LEN 10  // 10ms pulse for latching relays
 struct turnout_cfg_t
@@ -43,6 +43,7 @@ struct turnout_cfg_t
   turnout_cfg_t * next;
 };
 
+#define EE_TURNOUT_POS_BV 7
 /*
  * EEPROM structure:
  * subadd (byte) : B7: 0(=turnout) 1 is for forbidden combinations see below

@@ -178,13 +178,18 @@ turnout_cfg_t * read_cfg_turn(int ee_add)  // read cfg_turnout_t struct in eepro
   if (!cfg)
     return NULL;
   cfg->subadd = EEPROM.read(ee_add++);
-  cfg->servo_pin = EEPROM.read(ee_add++);
+  byte servo_pin = EEPROM.read(ee_add++);
+  cfg->servo_pin = servo_pin & 0x7F;
   cfg->straight_pos = EEPROM.read(ee_add++);
   cfg->thrown_pos = EEPROM.read(ee_add++);
   cfg->relay_pin_1 = EEPROM.read(ee_add++);
   cfg->relay_pin_2 = EEPROM.read(ee_add++);
   cfg->next = NULL;
-  cfg->status = 1 << 7 + NO_SERVO;
+  // Synced in eeprom, no servo attached, put it as moving to make sure it gets to the last known position
+  cfg->status = (1<< TURNOUT_MOV_BV) | (1 << TURNOUT_SYNC_BV) | NO_SERVO;
+  // Check last known pos (MSB of servo_pin)
+  if (servo_pin & (1 << EE_TURNOUT_POS_BV))
+    cfg->status |= (1 << TURNOUT_POS_BV);
   cfg->current_pos = UNVALID_POS;
   DEBUG(F("turnout read from eeprom:"));
   DEBUG(cfg->subadd);
@@ -227,11 +232,15 @@ void update_cfg_turnout(turnout_cfg_t * cfg, int ee_add=-1) //update turnout cfg
   if (ee_add<0)
     return; // FIXME error handling
   ee_add++; // skip subadd
-  EEPROM.update(ee_add++,cfg->servo_pin);
+  byte servo_pin = cfg->servo_pin;
+  if (cfg->status & (1 << TURNOUT_POS_BV))
+    servo_pin |= (1 << EE_TURNOUT_POS_BV);
+  EEPROM.update(ee_add++,servo_pin);
   EEPROM.update(ee_add++,cfg->straight_pos);
   EEPROM.update(ee_add++,cfg->thrown_pos);
   EEPROM.update(ee_add++,cfg->relay_pin_1);
   EEPROM.update(ee_add++,cfg->relay_pin_2);
+  cfg->status |= (1<< TURNOUT_SYNC_BV);
   DEBUGLN(F("update cfg_t"));
 }
 
@@ -243,7 +252,7 @@ void save_cfg_turnout(int ee_add,turnout_cfg_t * cfg)  // Save new cfg turnout
   EEPROM.update(ee_add++,cfg->thrown_pos);
   EEPROM.update(ee_add++,cfg->relay_pin_1);
   EEPROM.update(ee_add++,cfg->relay_pin_2);
-  cfg->status |= 0x80;
+  cfg->status |= (1<< TURNOUT_SYNC_BV);
   if (ee_add>eeprom_turn_end) {
     eeprom_turn_end = ee_add;
     EEPROM.update(ee_add,0); // Set the first byte of next block to 0 as it marks the end

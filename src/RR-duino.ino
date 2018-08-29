@@ -273,11 +273,11 @@ int write_one_turnout(byte subadd)
   }
   byte pos = (subadd >> SUB_VALUE_BV) & 0x01;
   // Put it in "moving state" and set new position
-  turnout->status |= (1 << TURNOUT_BV_MOV);
+  turnout->status |= (1 << TURNOUT_MOV_BV);
   if (pos)
-    turnout->status |= 1 << TURNOUT_BV_POS;
+    turnout->status |= 1 << TURNOUT_POS_BV;
   else
-    turnout->status &= ~(1 << TURNOUT_BV_POS);
+    turnout->status &= ~(1 << TURNOUT_POS_BV);
   DEBUGLN(turnout->status);
   return 0; // No error
 }
@@ -346,11 +346,11 @@ void write_all_turnouts()
       break;
     byte turn_pos = (command_buf[pos]>> SUB_VALUE_BV) & 0x01;
     // Put it in "moving state" and set new position
-    turn->status |= (1 << TURNOUT_BV_MOV);
+    turn->status |= (1 << TURNOUT_MOV_BV);
     if (turn_pos)
-      turn->status |= 1 << TURNOUT_BV_POS;
+      turn->status |= 1 << TURNOUT_POS_BV;
     else
-      turn->status &= ~(1 << TURNOUT_BV_POS);
+      turn->status &= ~(1 << TURNOUT_POS_BV);
     if (bit_index==0) { // next byte
       bit_index = 6;
       pos+=1;
@@ -517,7 +517,7 @@ int read_one_turnout(byte subadd)
     DEBUGLN(F("unknown turnout"));
     return -UNKNOWN_DEV;
   }
-  byte val = (turn->status >> TURNOUT_BV_POS) & 0x01;
+  byte val = (turn->status >> TURNOUT_POS_BV) & 0x01;
   return val;
 }
 
@@ -904,33 +904,60 @@ bool in_range(byte val,byte bound_1,byte bound_2)
   return (val>=m) && (val<=M);
 }
 
+void begin_pin_pulse(turnout_cfg_t * turn)
+{
+  byte pin;
+  if (turn->status & (1 << TURNOUT_POS_BV)) // which position
+    pin = turn->relay_pin_2;
+  else
+    pin = turn->relay_pin_1; 
+  if (pin==0xFE)
+    return;
+  // Setup the pin for a pulse
+  noInterrupts();
+  pulse_relay_pins[turn->status & 0x1F]=pin;
+  interrupts();
+}
+
 // Move all turnouts that have been activated
 void process_turnouts()
 {
   turnout_cfg_t * cur = turnout_cfg_head;
-  while (cur) {
-    if (cur->status & (1 << TURNOUT_BV_MOV)) {
+  for (;cur;cur = cur->next) {
+    if (cur->status & (1 << TURNOUT_MOV_BV)) {
       if ((cur->status & ~0x1F)==0)  // turnout is being fine tuned, dont move it
-        return;
+        continue;
+      int dir = (cur->thrown_pos>cur->straight_pos) ? 1 : -1;
       // check if this is a new movment, in that case, attach the servo
       if ((cur->status & 0x01F)==NO_SERVO) {
         int servo_index = find_free_servo();
         if (servo_index ==-1)
           // No free servo just return, we'll try later
-          return;
+          continue;
         cur->status = (cur->status & 0xE0) + (servo_index & 0x1F); // set the servo index
-        // Put the correct current position
-        if (cur->status & (1 << TURNOUT_BV_POS))
-          cur->current_pos = cur->straight_pos;
-        else
-          cur->current_pos = cur->thrown_pos;
+        // Special case: if current_pos is UNVALID_POS, the turnout has just been brought up
+        // We just put it in place rapidly and pulse the relay pin if needed
+        if (cur->current_pos == UNVALID_POS) {
+          begin_pin_pulse(cur); // pulse the relay immediately
+          // Setup the pos right before the end position
+          if (cur->status & (1 << TURNOUT_POS_BV))
+            cur->current_pos = cur->thrown_pos-dir;
+          else
+            cur->current_pos = cur->straight_pos+dir;
+        } else {
+          // Put the correct current position
+          if (cur->status & (1 << TURNOUT_POS_BV))
+            cur->current_pos = cur->straight_pos;
+          else
+            cur->current_pos = cur->thrown_pos;
+        }
         servos[cur->status & 0x01F].write(cur->current_pos);  
         servos[cur->status & 0x01F].attach(cur->servo_pin);
       }
       else if (!in_range(cur->current_pos,cur->straight_pos,cur->thrown_pos)) {
         // Movement is done, detach the servo
         servos[cur->status & 0x1F].detach();
-        cur->status = (cur->status &0xE0 & ~(1 << TURNOUT_BV_MOV)) + NO_SERVO;  // unset servo index and movement bit
+        cur->status = (cur->status &0xE0 & ~(1 << TURNOUT_MOV_BV)) | NO_SERVO;  // unset servo index and movement bit
         DEBUG(cur->status);
         // Queue async event
         queue_async_turnout(cur);
@@ -938,30 +965,15 @@ void process_turnouts()
       else {
         servos[cur->status & 0x1F].write(cur->current_pos);
         if (cur->current_pos == abs(cur->straight_pos-cur->thrown_pos)/2)
-        {
-          if ((cur->status & (1 << TURNOUT_BV_POS)) && (cur->relay_pin_2 != 0xFE)) { // which position
-              // Setup the pin for a pulse
-              noInterrupts();
-              pulse_relay_pins[cur->status & 0x1F]=cur->relay_pin_2;
-              interrupts();
-          }
-          else if (!(cur->status & (1 << TURNOUT_BV_POS)) && (cur->relay_pin_1 != 0xFE)) {
-               // Setup the pin for a pulse
-              noInterrupts();
-              pulse_relay_pins[cur->status & 0x1F]=cur->relay_pin_1;
-              interrupts();
-          }
-        }
+          begin_pin_pulse(cur);
       }
-      // dir is -1 if going from straight to thrown pos is done by incrementing, -1 otherwise
-      int dir = (cur->thrown_pos>cur->straight_pos) ? 1 : -1;
+      // add dir to go from straight to thrown pos, substract otherwise
       DEBUGLN(cur->current_pos);
-      if (cur->status & (1 << TURNOUT_BV_POS)) // moving from straight to thrown, use dir to increment
+      if (cur->status & (1 << TURNOUT_POS_BV))
         cur->current_pos += dir;
       else
         cur->current_pos -= dir;
     }
-    cur=cur->next;
   }
 }
 
@@ -1228,7 +1240,7 @@ void save_config()
   DEBUGLN(F("saveconfig, turnouts first"));
   while (turn)
   {
-    if ((turn->status & (1<<TURNOUT_BV_SYNC))==0) {
+    if ((turn->status & (1<<TURNOUT_SYNC_BV))==0) {
       int ee_add = ee_find_cfg_turnout(turn->subadd);
       if (ee_add<0) { // new config, add it in EEPROM
         ee_add = ee_find_free_turnout();
