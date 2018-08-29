@@ -9,12 +9,12 @@
 
 /***************Structs**************/
 
-#define SENSOR_BV_SYNC 7
-#define SENSOR_BV_IO 6
-#define SENSOR_BV_PULLUP 5
+#define SENSOR_SYNC_BV 7
+#define SENSOR_IO_BV 6
+#define SENSOR_PULLUP_BV 5
 
-#define SENSOR_BV_CHK_STATE 1
-#define SENSOR_BV_CHNG_STATE 2
+#define SENSOR_CHK_STATE_BV 1
+#define SENSOR_CHNG_STATE_BV 2
 
 #define EE_FREE_SENSOR 0x80
 

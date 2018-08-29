@@ -62,11 +62,11 @@ void send_async_events()
       DEBUG(sens->subadd);
       DEBUG(" ");
       DEBUGLN(sensors_chng_state);
-      if (sens->status & (1 << SENSOR_BV_IO)) {
-        if (sens->status & (1<<SENSOR_BV_CHNG_STATE)) {
+      if (sens->status & (1 << SENSOR_IO_BV)) {
+        if (sens->status & (1<<SENSOR_CHNG_STATE_BV)) {
           sensors_chng_state--;
           empty_answer = false;
-          sens->status &= ~(1<<SENSOR_BV_CHNG_STATE); // Reset changed state
+          sens->status &= ~(1<<SENSOR_CHNG_STATE_BV); // Reset changed state
           // Input sensor, send last validated state
           data[len++]=sens->subadd | ((sens->status & 0x01) << SUB_VALUE_BV);
           if ((len > MAX_CMD_LEN-2) || !sensors_chng_state) { // no more space or last change

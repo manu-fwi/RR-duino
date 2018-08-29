@@ -77,8 +77,8 @@ void config_pins_turnout(turnout_cfg_t * turn)
 // Config pin I/O for a sensor and also set the outputs to their last known state
 void config_pins_sensor( sensor_cfg_t * sensor, bool init_state = true) 
 {
-  if (sensor->status & (1<< SENSOR_BV_IO))
-    pinMode(sensor->sensor_pin, (sensor->status & (1 << SENSOR_BV_PULLUP)) ? INPUT_PULLUP : INPUT);
+  if (sensor->status & (1<< SENSOR_IO_BV))
+    pinMode(sensor->sensor_pin, (sensor->status & (1 << SENSOR_PULLUP_BV)) ? INPUT_PULLUP : INPUT);
   else {
     pinMode(sensor->sensor_pin, OUTPUT);
     if (init_state) {
@@ -292,7 +292,7 @@ int write_one_sensor(byte subadd)
     DEBUGLN(F("unknown sensor"));
     return -UNKNOWN_DEV;
   }
-  if (sensor->status & (1 << SENSOR_BV_IO)) {
+  if (sensor->status & (1 << SENSOR_IO_BV)) {
     DEBUGLN(F("Trying to write on input sensor"));
     return -UNVALID_DEV;
   }
@@ -304,7 +304,7 @@ int write_one_sensor(byte subadd)
     digitalWrite(sensor->sensor_pin, LOW);
     sensor->status &= 0xFE;
   }
-  sensor->status &= ~(1 << SENSOR_BV_SYNC); // No more synced in EEPROM
+  sensor->status &= ~(1 << SENSOR_SYNC_BV); // No more synced in EEPROM
   DEBUG(sensor->sensor_pin);
   DEBUG(F(" "));
   DEBUGLN(pos);
@@ -372,7 +372,7 @@ void write_all_sensors()
   
   sensor_cfg_t * sensor;
   for (sensor = sensor_cfg_head;sensor;sensor=sensor->next) {
-    if (!(sensor->status & (1<<SENSOR_BV_IO))) { // Process only output sensors
+    if (!(sensor->status & (1<<SENSOR_IO_BV))) { // Process only output sensors
       if ((bit_index==0) && (command_buf[pos] & 0x80)) // this must be the end of the bits stream
         break;
      byte sensor_val = (command_buf[pos] >> SUB_VALUE_BV) & 0x01;
@@ -492,12 +492,12 @@ int read_one_sensor(byte subadd)
     return -UNKNOWN_DEV;
   }
   byte val = sensor->status & 0x1;
-  if (sensor->status & (1 << SENSOR_BV_IO)) {
+  if (sensor->status & (1 << SENSOR_IO_BV)) {
     // Input sensor, send last validated state
 
-    if (sensor->status & (1 << SENSOR_BV_CHNG_STATE))
+    if (sensor->status & (1 << SENSOR_CHNG_STATE_BV))
     {
-      sensor->status &= ~(1 << SENSOR_BV_CHNG_STATE);
+      sensor->status &= ~(1 << SENSOR_CHNG_STATE_BV);
       DEBUGLN(sensor->status);     
       if (sensors_chng_state>0)
         sensors_chng_state--;
@@ -570,10 +570,10 @@ byte show_one_sensor(sensor_cfg_t * sensor, byte * data)
   DEBUG(F(" "));
   DEBUGLN(sensor->sensor_pin);
   // Set I/O bit
-  if (!(sensor->status & (1 << SENSOR_BV_IO)))
+  if (!(sensor->status & (1 << SENSOR_IO_BV)))
     data[0] |= (1<<SUB_IODIR_BV); // output
   else { // input
-    if (sensor->status & (1 << SENSOR_BV_PULLUP)) // set pullup
+    if (sensor->status & (1 << SENSOR_PULLUP_BV)) // set pullup
       data[1] |= (1 << PIN_PULLUP_BV);
   }
   return 2;
@@ -744,16 +744,16 @@ int config_one_sensor(byte pos)
   // Set bits for status
   if (!(command_buf[pos] & (1<<SUB_IODIR_BV))) {
     DEBUGLN(F("input sensor cfg"));
-    status |= (1<<SENSOR_BV_IO);
+    status |= (1<<SENSOR_IO_BV);
   }
   if (command_buf[pos+1] & (1<<PIN_PULLUP_BV)) // Check pullup
-    status |= (1 << SENSOR_BV_PULLUP);
+    status |= (1 << SENSOR_PULLUP_BV);
   if (cfg) {
     // this cfg exists so just update it
     cfg->sensor_pin = command_buf[pos+1] & 0x7F;
     if (save_cfg_to_eeprom)
       update_cfg_sensor(command_buf[pos]&0x3F,cfg->sensor_pin,status);       
-    cfg->status=status | (1<<SENSOR_BV_SYNC);
+    cfg->status=status | (1<<SENSOR_SYNC_BV);
     DEBUG(F("Updating sensor="));
     DEBUGLN(cfg->subadd);
   } else {
@@ -780,8 +780,7 @@ int config_one_sensor(byte pos)
     sensor_cfg_head = cfg;  
     // save it to eeprom
     if (save_cfg_to_eeprom)
-      save_cfg_sensor(ee_find_free_sensor(),cfg);
-    cfg->status |= (1<<SENSOR_BV_SYNC);
+        save_cfg_sensor(ee_find_free_sensor(),cfg);
   }
   char sensor_str[20];
   sensor_cfg_to_str(cfg, sensor_str);
@@ -1262,7 +1261,7 @@ void save_config()
   DEBUGLN(F("Now sensors"));
   while (sensor)
   {
-    if ((sensor->status & (1<<SENSOR_BV_SYNC))==0) {
+    if ((sensor->status & (1<<SENSOR_SYNC_BV))==0) {
       int ee_add = ee_find_cfg_sensor(sensor->subadd);
       if (ee_add<0) { // new config, add it in EEPROM
         ee_add = ee_find_free_sensor();

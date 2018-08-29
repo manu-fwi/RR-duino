@@ -65,7 +65,7 @@ int ee_find_free_sensor()
     ee_add -= CFG_SENSOR_SIZE;
     first = EEPROM.read(ee_add);
   }
-  if ((ee_add==eeprom_sensor_end) && !room_in_eeprom(CFG_SENSOR_SIZE)) // No free slot, check if we can add one new turnout config
+  if ((ee_add==eeprom_sensor_end) && !room_in_eeprom(CFG_SENSOR_SIZE)) // No free slot
     return -1;
   else return ee_add;
 }
@@ -75,26 +75,24 @@ sensor_cfg_t * read_cfg_sensor(int ee_add)  // read sensor_cfg_t struct in eepro
   sensor_cfg_t * cfg = new sensor_cfg_t;
   if (!cfg)
     return NULL;
-  cfg->subadd = EEPROM.read(ee_add++);
-  cfg->sensor_pin = EEPROM.read(ee_add++);
+  byte subadd = EEPROM.read(ee_add++);
+  cfg->subadd = subadd & 0x3F;
+  byte pin = EEPROM.read(ee_add++);
+  cfg->sensor_pin = pin & 0x7F;
   DEBUG("sensor read from eeprom:");
   DEBUG(cfg->subadd);
   DEBUG(",");
   DEBUGLN(cfg->sensor_pin);
-  cfg->status = 1 << SENSOR_BV_SYNC;
+  cfg->status = 1 << SENSOR_SYNC_BV;
   
   // Adjust status from eeprom content
-  if (cfg->subadd & (1 << EE_SENSOR_SUB_IO_BV))
-    cfg->status |= 1<< SENSOR_BV_IO;
-  if (cfg->sensor_pin & (1 << EE_SENSOR_PIN_PULLUP_BV))
-    cfg->status |= 1 << SENSOR_BV_PULLUP;
-  if (cfg->subadd & (1 << EE_SENSOR_SUB_VALUE_BV))
+  if (subadd & (1 << EE_SENSOR_SUB_IO_BV))
+    cfg->status |= 1<< SENSOR_IO_BV;
+  if (pin & (1 << EE_SENSOR_PIN_PULLUP_BV))
+    cfg->status |= 1 << SENSOR_PULLUP_BV;
+  if (subadd & (1 << EE_SENSOR_SUB_VALUE_BV))
     cfg->status |= 1;
-  else
-    cfg->status &= 0xFE;
-  // Clear bits
-  cfg->subadd &= 0x3F;  // Clean the subadd up
-  cfg->sensor_pin &= 0x7F;
+
   cfg->last_time = millis();
   return cfg;
 }
@@ -109,9 +107,9 @@ void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
   byte subadd = sensor->subadd;
   byte pin = sensor->sensor_pin;
   // Save to eeprom: set bits in subadd and servo_pin according to status
-  if (sensor->status & (1 << SENSOR_BV_IO)) {
+  if (sensor->status & (1 << SENSOR_IO_BV)) {
     subadd |= (1<<EE_SENSOR_SUB_IO_BV);
-    if (sensor->status & (1 << SENSOR_BV_PULLUP))
+    if (sensor->status & (1 << SENSOR_PULLUP_BV))
       pin |= (1 << EE_SENSOR_PIN_PULLUP_BV);
   }
   if (sensor->status & 1)
@@ -120,7 +118,7 @@ void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
   EEPROM.write(ee_add, subadd);
   EEPROM.write(ee_add+1,pin);
   // Mark as saved in eeprom
-  sensor->status |= (1 << SENSOR_BV_SYNC);
+  sensor->status |= (1 << SENSOR_SYNC_BV);
   ee_add-=CFG_SENSOR_SIZE;
   if (ee_add<eeprom_sensor_end) {  
     eeprom_sensor_end=ee_add;
@@ -142,7 +140,7 @@ void update_cfg_sensor(byte subadd,byte pin,byte status,int ee_add=-1)
     return; // FIXME: error handling
     
   // set bits in subadd and servo_pin according to status
-  if (status & (1 << SENSOR_BV_IO))
+  if (status & (1 << SENSOR_IO_BV))
     subadd |= (1<<EE_SENSOR_SUB_IO_BV);
       
   if (status & 1)
@@ -150,7 +148,7 @@ void update_cfg_sensor(byte subadd,byte pin,byte status,int ee_add=-1)
 
   EEPROM.write(ee_add, subadd);
   
-  if (status & (1 << SENSOR_BV_PULLUP))
+  if (status & (1 << SENSOR_PULLUP_BV))
     pin |= (1<<EE_SENSOR_PIN_PULLUP_BV);
   EEPROM.update(ee_add+1, pin);
 }
@@ -163,8 +161,8 @@ void update_cfg_sensor(byte subadd,byte pin,byte status,int ee_add=-1)
 void sensor_cfg_to_str(sensor_cfg_t * sens,char * str)
 {
   snprintf(str,18,"<AS %d %d I>",sens->subadd,sens->sensor_pin);
-  if (sens->status & (1<<SENSOR_BV_IO)) {
-    if (sens->status & (1<<SENSOR_BV_PULLUP))
+  if (sens->status & (1<<SENSOR_IO_BV)) {
+    if (sens->status & (1<<SENSOR_PULLUP_BV))
       str[strlen(str)-2]='P';
   } else str[strlen(str)-2]='O';
 }
@@ -178,18 +176,18 @@ bool check_all_sensors()
 {
   sensor_cfg_t * current = sensor_cfg_head;
   while (current) {
-    if (current->status & (1 << SENSOR_BV_IO)) {
+    if (current->status & (1 << SENSOR_IO_BV)) {
       byte temp = (digitalRead(current->sensor_pin)==HIGH) ? 1 : 0;
      
       // Check if state changed
-      if (temp!=((current->status >> SENSOR_BV_CHK_STATE)&0x01)) {
+      if (temp!=((current->status >> SENSOR_CHK_STATE_BV)&0x01)) {
         //If yes update time stamp
         current->last_time = millis();
         // And state
         if (temp)
-            current->status |= (1 << SENSOR_BV_CHK_STATE);
+            current->status |= (1 << SENSOR_CHK_STATE_BV);
         else
-          current->status &= ~(1 << SENSOR_BV_CHK_STATE);
+          current->status &= ~(1 << SENSOR_CHK_STATE_BV);
       } else {
         // Same state, check if we can validate it
         if (current->last_time && (millis()>current->last_time+SENSOR_DEBOUNCE)) {
@@ -203,10 +201,10 @@ bool check_all_sensors()
             current->status = (current->status & 0xFE)+temp; // Validate the new state
             //FIXME
              DEBUG(F("CHNG STATE="));
-            DEBUGLN(current->status & (1<<SENSOR_BV_CHNG_STATE));
-            if ((current->status & (1<<SENSOR_BV_CHNG_STATE))==0)
+            DEBUGLN(current->status & (1<<SENSOR_CHNG_STATE_BV));
+            if ((current->status & (1<<SENSOR_CHNG_STATE_BV))==0)
             {
-              current->status |= (1 << SENSOR_BV_CHNG_STATE);
+              current->status |= (1 << SENSOR_CHNG_STATE_BV);
               sensors_chng_state++;
               current->last_time = 0; // Special value that says we have detected a change in the state
               // No need to go on
