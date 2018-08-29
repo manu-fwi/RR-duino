@@ -109,7 +109,7 @@ bool load_turnouts()
     } else {
       turnout_cfg_t * turn = read_cfg_turn(ee_add);
       if (turn) {
-        turn->status= (1<<7) + NO_SERVO;   // sync with eeprom and no servo attached
+        turn->status= (1<<TURNOUT_SYNC_BV) + NO_SERVO;   // sync with eeprom and no servo attached
         // Add turnout so that the list of turnouts is sorted in ascending order with respect to subaddress
         turnout_cfg_t * place = find_last_turn_before(turn->subadd);
         if (place) {
