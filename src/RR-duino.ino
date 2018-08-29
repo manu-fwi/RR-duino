@@ -775,9 +775,15 @@ int config_one_sensor(byte pos)
     cfg->sensor_pin = command_buf[pos+1]& 0x7F;
     cfg->status = status;
     cfg->last_time=millis();
-    // add it to the list
-    cfg->next = sensor_cfg_head;
-    sensor_cfg_head = cfg;  
+    // add it to the list, ensuring the list stays in ascending subaddress order
+    sensor_cfg_t * previous = find_last_sensor_before(cfg->subadd);
+    if (previous) {
+      cfg->next = previous->next;
+      previous->next = cfg;
+    } else {
+      cfg->next = sensor_cfg_head;
+      sensor_cfg_head = cfg;
+    }
     // save it to eeprom
     if (save_cfg_to_eeprom)
         save_cfg_sensor(ee_find_free_sensor(),cfg);
@@ -993,47 +999,7 @@ void set_address(byte add)
     send_simple_answer(0);
   } else DEBUGLN(F("Set address but not in address mode"));  // No reply here it was not meant for us
 }
-/*
-void set_turnout_pos()
-{
-  char * end;
-  unsigned add = strtoul(commandStr+2, &end,10);
 
-// Check if we are the dest of this message
-  if ((end==commandStr+2) || (add!=address)) {
-    return;
-  }
-  char * curr = end;
-  unsigned subadd = strtoul(curr, &end,10);
-  if (curr==end) {
-    return;
-  }
-  curr = end;
-  int pos = strtol(curr,&end,10);
-  if (curr==end) {
-    return;
-  }
-  turnout_cfg_t * turn = find_cfg_turnout(subadd);
-  if (turn) {
-    if ((sensors_chng_state>0) || answers_head)
-      to_bus.println("<AI+ OK>");
-    else
-      to_bus.println("<AI OK>");
-    // Set the turnout servo to 0, which is a special servo dedicated to turnout tuning
-    // This will also prevent the code to throw or unthrow the turnout while its position is being set
-    if ((pos>=10) && (pos<=170)) {
-      if ((turn->status & 0x1F!=0) &&(turn->status & 0x1F!=NO_SERVO)) // Check if it was attached to a servo
-        servos[turn->status & 0x1F].detach();
-      turn->status &= 0xE0;   // Means: reserved for fine tuning
-      servos[0].detach();
-      servos[0].attach(turn->servo_pin);
-      servos[0].write(pos);     // Set position
-    }
-    else if (pos==-1)
-      turn->status = (turn->status & 0xE0)+NO_SERVO;  // Back to normal
-  }
-}
-*/
 void async_cmd()
 {
   DEBUGLN(F("Sending async events"));
@@ -1327,13 +1293,14 @@ bool check_cmd_1st_stage()
           load_cfg_from_eeprom();
            return true;
         case 0b100:
-        case 0b101:
-          // show command
-          if (command_buf[0] & (1 << CMD_SENS_TURN_BV))
-            show_turnouts_cmd(command_buf[2]);
-          else
-            show_sensors_cmd(command_buf[2]);          
+          // show sensors command
+          show_sensors_cmd(command_buf[2]);          
           return true;
+        case 0b101:
+          // show turnouts command
+          show_turnouts_cmd(command_buf[2]);
+          return true;
+
         case 0b110:
           // Turnout fine tuning, set the check function accordingly
           check_cmd = & check_turnout_fine_cmd_2nd_stage;
@@ -1367,6 +1334,14 @@ void loop() {
     last_run = millis()/10;
     check_all_sensors();
   }
+  // Blink if not in address mode
+  if (!address_mode) {
+    if (millis()>last_blink+300) {
+      digitalWrite(13,blinking);
+      blinking = (blinking==HIGH) ? LOW:HIGH;
+      last_blink = millis();
+    }
+  }
   // Command processing
   if (to_bus.available()) {
     byte c = to_bus.read();
@@ -1384,14 +1359,6 @@ void loop() {
         if ((*check_cmd)()) // check if command complete and calls the corresponding function
           new_command = false;  // wait for next START BYTE
       } else new_command = false; // buffer full without a valid command, start over
-    }
-  }
-  // Blink if not in address mode
-  if (!address_mode) {
-    if (millis()>last_blink+300) {
-      digitalWrite(13,blinking);
-      blinking = (blinking==HIGH) ? LOW:HIGH;
-      last_blink = millis();
     }
   }
 }
