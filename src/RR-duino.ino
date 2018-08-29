@@ -11,12 +11,45 @@ bool save_cfg_to_eeprom = false;
 
 // Pool of servos top be used
 Servo servos[NB_SERVOS];  // servos[0] is reserved for turnout position tuning
-unsigned long relay_time[NB_SERVOS];
-
+volatile byte pulse_relay_pins[NB_SERVOS];  // pins that needs to be pulsed; MSB indicates state
 byte version_nb;
 bool address_mode = false;
  
 byte address;               // This holds the address of this slave
+
+// Timer2 init counter and secondary counter
+// 256-96 = 160 ticks to overflow
+// The timer freq with 1024 prescaler is roughly 16000
+// So the overflow feq is 100Hz, just need to divide by 2 to get the 50Hz
+
+const byte TCNT2Init = 96;
+volatile byte timer2=0;
+
+//********* ISR for the pin pulses (relay pins) ********
+
+ISR(TIMER2_OVF_vect)
+{
+  TCNT2 = TCNT2Init;
+  timer2++;
+  if (timer2==2) {
+    // Begin or finish a pulse (depending on current state):
+    //   if HIGH, pulse should be ended and pin is discarded
+    //   if LOW, pulse must begin
+    for (byte i=1;i<NB_SERVOS;i++) {
+      if (pulse_relay_pins[i]!=0) {
+        if (pulse_relay_pins[i] & 0x80) {
+          digitalWrite(pulse_relay_pins[i] & 0x7F,LOW);  // end the pulse
+          pulse_relay_pins[i]=0;  // Discard pin
+        } else {
+          digitalWrite(pulse_relay_pins[i],HIGH);  // begin the pulse
+          pulse_relay_pins[i] |= 0x80;             // Set the MSB to show pulse has begun
+        }
+      }
+    }
+    timer2 = 0;
+  }
+}
+
 
 int find_free_servo()  // returns the index of the first free servo, -1 if none
 {
@@ -157,6 +190,25 @@ void clear_eeprom(bool answer=true)
 }
 
 void setup() {
+  // Setup the pulse relay pins table
+  noInterrupts();
+  for (byte i=0;i<NB_SERVOS;i++)
+    pulse_relay_pins[i]=0;
+  interrupts();
+  
+  // Timer2 setting
+  TCCR2B = 0x00; // No clock source (Timer/Counter stopped) 
+  TCNT2 = TCNT2Init; // Register : the Timer/Counter (TCNT2) and Output Compare Register (OCR2A and OCR2B) are 8-bit
+                    // Reset Timer Count
+ 
+  TCCR2A = 0x00; // TCCR2A - Timer/Counter Control Register A
+                 // All bits to zero -> Normal operation
+ 
+  TCCR2B |= (1<<CS22)|(1<<CS21) | (1<<CS20); // Prescale 1024 (Timer/Counter started)
+   
+  TIMSK2 |= (1<<TOIE2); // TIMSK2 - Timer/Counter2 Interrupt Mask Register
+  // Bit 0 - TOIE2: Timer/Counter2 Overflow Interrupt Enable
+  
   //clear_eeprom(false);
 #ifdef DEBUG
    Serial.begin(115200);
@@ -179,8 +231,7 @@ void setup() {
     eeprom_turn_end = 2;
     return;
   }
-  for (byte i=0;i<NB_SERVOS;i++)
-    relay_time[i]=0;
+
   // Config "set address mode" pin
   pinMode(ADDRESS_MODE_PIN, INPUT_PULLUP);
   pinMode(13, OUTPUT);
@@ -886,24 +937,19 @@ void process_turnouts()
       }
       else {
         servos[cur->status & 0x1F].write(cur->current_pos);
-        if (relay_time[cur->status & 0x1F]!=0) { // relay pulse already began
-          if (millis()>relay_time[cur->status & 0x1F]+RELAY_PULSE_LEN) { // pulse must be ended
-            if (cur->status & (1 << TURNOUT_BV_POS))  // which position
-              digitalWrite(cur->relay_pin_2, LOW);
-            else
-              digitalWrite(cur->relay_pin_1, LOW);
-            relay_time[cur->status & 0x1F]=0;
-          }
-        } 
-        else if (cur->current_pos == abs(cur->straight_pos-cur->thrown_pos)/2)
+        if (cur->current_pos == abs(cur->straight_pos-cur->thrown_pos)/2)
         {
           if ((cur->status & (1 << TURNOUT_BV_POS)) && (cur->relay_pin_2 != 0xFE)) { // which position
-              digitalWrite(cur->relay_pin_2, HIGH);  // begin pulse
-              relay_time[cur->status & 0x1F]=millis();
+              // Setup the pin for a pulse
+              noInterrupts();
+              pulse_relay_pins[cur->status & 0x1F]=cur->relay_pin_2;
+              interrupts();
           }
           else if (!(cur->status & (1 << TURNOUT_BV_POS)) && (cur->relay_pin_1 != 0xFE)) {
-              digitalWrite(cur->relay_pin_1, HIGH);
-              relay_time[cur->status & 0x1F]=millis();
+               // Setup the pin for a pulse
+              noInterrupts();
+              pulse_relay_pins[cur->status & 0x1F]=cur->relay_pin_1;
+              interrupts();
           }
         }
       }
