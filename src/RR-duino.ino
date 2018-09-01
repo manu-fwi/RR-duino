@@ -984,9 +984,9 @@ void process_turnouts()
 
 void version_cmd()
 {
-  byte msg[]={(1<<CMD_CFGCMD_BV)|(1 << CMD_CFG_SPECIAL_BV),address,version_nb};
+  byte msg[]={(1<<CMD_CFGCMD_BV)|(1 << CMD_CFG_SPECIAL_BV),address,version_nb,0x80};
   DEBUGLN(F("Version"));
-  send_one_msg(msg,3);
+  send_one_msg(msg,4);
 }
 
 void set_address(byte add)
