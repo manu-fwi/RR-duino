@@ -77,6 +77,7 @@ void send_async_events()
             for (byte j=0;j<len;j++) {
               to_bus.write(data[j]);
             }
+            break; // break, we will go on next time
           }
         }
       }
@@ -84,9 +85,10 @@ void send_async_events()
     }
     if (empty_answer) { // in  case no event was to be reported, send an empty answer
       data[0]= 0b00000100; // nothing to be reported
-      data[1]=address;
+      data[1]=address | (1<<ADD_LIST_BV);
+      data[2]=0x80;
       to_bus.write(0xFF); // Start byte
-      for (byte j=0;j<2;j++) {
+      for (byte j=0;j<3;j++) {
         to_bus.write(data[j]);
       }
     }
@@ -125,8 +127,8 @@ void queue_async_turnout(turnout_cfg_t * turnout)
   DEBUG(turnout->current_pos);
   DEBUG(F(",status="));
   DEBUGLN(turnout->status);
-  if (!answ || (answ->len>MAX_CMD_LEN-3)) {
-    // empty list or last answer is full (we need 2 bytes for the turnout config plus the end list byte (0x80)
+  if (!answ || (answ->len>MAX_CMD_LEN-2)) {
+    // empty list or last answer is full (we need 2 bytes, 1 for the turnout subadd plus the end list byte (0x80)
     // create a new answer
     answer_t * p = new struct answer_t;
     p->data = new byte[MAX_CMD_LEN];
