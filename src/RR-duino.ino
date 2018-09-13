@@ -550,46 +550,52 @@ void read_all_sensors()
 {
   DEBUGLN(F("reading all sensors"));
   // We use the command buffer as we are sending the answer right away, no need to consume even more memory
-  command_buf[1] &= ~(1 << CMD_CMD_ANSWER_BV);  // It is an answer now
-  cmd_pos = 3;  // beginning of the payload
-  byte nb_bits = 0;
-
-  for (sensor_cfg_t * sensor;sensor;sensor=sensor->next) {
-    if (nb_bits==7) { // go to next byte this one is full (only 7 bits are used MSB must be 0
+  command_buf[0] &= ~(1 << CMD_CMD_ANSWER_BV);  // It is an answer now
+  command_buf[1]|= (1<<ADD_LIST_BV);
+  cmd_pos = 2;  // beginning of the payload
+  byte bit_pos = 0;
+  command_buf[cmd_pos]=0;
+  for (sensor_cfg_t * sensor=sensor_cfg_head;sensor;sensor=sensor->next) {
+    if (bit_pos==7) { // go to next byte this one is full (only 7 bits are used MSB must be 0
       cmd_pos++;
-      nb_bits = 0;
+      bit_pos = 0;
+      command_buf[cmd_pos]=0;
     }
-    command_buf[cmd_pos] <<= 1;
-    command_buf[cmd_pos] |= (sensor->status & 0x01);
-    nb_bits++;
+    if (sensor->status & 0x01)
+      command_buf[cmd_pos] |= (1 << bit_pos);
+    bit_pos;
   }
   command_buf[++cmd_pos]=0x80;
-  send_one_msg(command_buf, cmd_pos);
+  send_one_msg(command_buf, cmd_pos+1);
 }
 
 void read_all_turnouts()
 {
   DEBUGLN(F("reading all turnouts"));
   // We use the command buffer as we are sending the answer right away, no need to consume even more memory
-  command_buf[1] &= ~(1 << CMD_CMD_ANSWER_BV);  // It is an answer now
-  cmd_pos = 3;  // beginning of the payload
-  byte nb_bits = 0;
+  command_buf[0] &= ~(1 << CMD_CMD_ANSWER_BV);  // It is an answer now
+  command_buf[1]|= (1<<ADD_LIST_BV);
+  cmd_pos = 2;  // beginning of the payload
+  command_buf[cmd_pos]=0;
+  byte bit_pos = 0;
 
-  for (turnout_cfg_t * turnout;turnout;turnout=turnout->next) {
-    if (nb_bits==7) { // go to next byte this one is full (only 7 bits are used MSB must be 0
+  for (turnout_cfg_t * turnout=turnout_cfg_head;turnout;turnout=turnout->next) {
+    if (bit_pos==7) { // go to next byte this one is full (only 7 bits are used MSB must be 0
       cmd_pos++;
-      nb_bits = 0;
+      bit_pos = 0;
+      command_buf[cmd_pos]=0;
     }
-    command_buf[cmd_pos] <<= 1;
-    bool thrown = (turnout->status & (1 << TURNOUT_POS_BV)!=0);
-    if (turnout->status & (1 << TURNOUT_MOV_BV)!=0)  // It is moving so actually invert the position
+    bool thrown = (turnout->status & (1 << TURNOUT_POS_BV))!=0;
+    if ((turnout->status & (1 << TURNOUT_MOV_BV))!=0)  // It is moving so actually invert the position
       thrown = !thrown;
-    if (thrown)
-      command_buf[cmd_pos] |= 1;
-    nb_bits++;
+    if (thrown) {
+      command_buf[cmd_pos] |= (1 << bit_pos);
+    }
+    bit_pos++;
   }
   command_buf[++cmd_pos]=0x80;
-  send_one_msg(command_buf, cmd_pos);}
+  send_one_msg(command_buf, cmd_pos+1);
+}
 
 // data points to the part of a buffer where the function puts
 // the subaddress and the pin number with correct bits set (I/O, pullup,...)
@@ -1142,7 +1148,10 @@ bool check_rwcmd_2nd_stage()
 {
   if (cmd_pos<2)
     return false;
+  Serial.print("rwcmd_2");
+  Serial.println(command_buf[0]);
   if (command_buf[0] & (1 << CMD_ALL_BV)) { // read or write ALL
+    Serial.println("All R or W");
     if (!(command_buf[0] & (1 << CMD_RWDIR_BV))) // read all command
     {
       if (command_buf[0] & (1 << CMD_SENS_TURN_BV))
@@ -1349,8 +1358,9 @@ bool check_cmd_1st_stage()
       check_cmd = & check_cfgcmd_2nd_stage;  // it is a normal config command set the check cmd accordingly
     return false;
   }
+  DEBUGLN("fin check 1st stage");
   check_cmd = &check_rwcmd_2nd_stage;  //now set the check cmd pointer to the 2nd stage rw command
-  return false;
+  return check_rwcmd_2nd_stage();
 }
 
 byte blinking = HIGH;
