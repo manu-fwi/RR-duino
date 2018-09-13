@@ -549,14 +549,47 @@ void read_several()
 void read_all_sensors()
 {
   DEBUGLN(F("reading all sensors"));
-  send_simple_answer(0);
+  // We use the command buffer as we are sending the answer right away, no need to consume even more memory
+  command_buf[1] &= ~(1 << CMD_CMD_ANSWER_BV);  // It is an answer now
+  cmd_pos = 3;  // beginning of the payload
+  byte nb_bits = 0;
+
+  for (sensor_cfg_t * sensor;sensor;sensor=sensor->next) {
+    if (nb_bits==7) { // go to next byte this one is full (only 7 bits are used MSB must be 0
+      cmd_pos++;
+      nb_bits = 0;
+    }
+    command_buf[cmd_pos] <<= 1;
+    command_buf[cmd_pos] |= (sensor->status & 0x01);
+    nb_bits++;
+  }
+  command_buf[++cmd_pos]=0x80;
+  send_one_msg(command_buf, cmd_pos);
 }
 
 void read_all_turnouts()
 {
   DEBUGLN(F("reading all turnouts"));
-  send_simple_answer(0);
-}
+  // We use the command buffer as we are sending the answer right away, no need to consume even more memory
+  command_buf[1] &= ~(1 << CMD_CMD_ANSWER_BV);  // It is an answer now
+  cmd_pos = 3;  // beginning of the payload
+  byte nb_bits = 0;
+
+  for (turnout_cfg_t * turnout;turnout;turnout=turnout->next) {
+    if (nb_bits==7) { // go to next byte this one is full (only 7 bits are used MSB must be 0
+      cmd_pos++;
+      nb_bits = 0;
+    }
+    command_buf[cmd_pos] <<= 1;
+    bool thrown = (turnout->status & (1 << TURNOUT_POS_BV)!=0);
+    if (turnout->status & (1 << TURNOUT_MOV_BV)!=0)  // It is moving so actually invert the position
+      thrown = !thrown;
+    if (thrown)
+      command_buf[cmd_pos] |= 1;
+    nb_bits++;
+  }
+  command_buf[++cmd_pos]=0x80;
+  send_one_msg(command_buf, cmd_pos);}
 
 // data points to the part of a buffer where the function puts
 // the subaddress and the pin number with correct bits set (I/O, pullup,...)

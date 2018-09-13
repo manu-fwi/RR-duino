@@ -24,7 +24,7 @@ struct sensor_cfg_t
   byte sensor_pin;
   /*
    *  B7=1 => synced in eeprom
-   *  B6=I/0: 1=> Input / 0=> Output
+   *  B6=I/O: 1=> Input / 0=> Output
    *  B5=1 => Pullup (if setup as Input)
    *  
    *  B2: state has changed
