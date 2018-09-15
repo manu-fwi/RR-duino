@@ -40,7 +40,9 @@ void send_async_events()
       if (sensors_chng_state) { // any input changed or async events waiting?
         async_head->data[0] |= (1 << CMD_PEND_ANSWERS_BV);
       }
+      async_head->data[async_head->len++]=0x80;// we need to add termination to the last
     }
+    to_bus.write(0xFF);
     for (byte j=0;j<async_head->len;j++)
       to_bus.write(async_head->data[j]);
     delete async_head->data;

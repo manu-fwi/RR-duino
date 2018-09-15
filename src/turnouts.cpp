@@ -25,11 +25,14 @@ turnout_cfg_t * find_last_turn_before(byte subadd)
 turnout_cfg_t * find_cfg_turnout(byte subadd)
 {
   turnout_cfg_t * cur = turnout_cfg_head;
+  DEBUG("find cfg turnout ");
+  DEBUGLN(subadd);
   while (cur) {
+    DEBUGLN(cur->subadd);
     if (cur->subadd == subadd)
       return cur;
-    else if (cur->subadd>subadd)
-      return NULL;
+    /*else if (cur->subadd>subadd)
+      return NULL;*/
     cur = cur->next;
   }
   return NULL;

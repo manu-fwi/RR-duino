@@ -272,13 +272,15 @@ int write_one_turnout(byte subadd)
     return -UNKNOWN_DEV;
   }
   byte pos = (subadd >> SUB_VALUE_BV) & 0x01;
+  // Check if the turnout is already in position
+  if (pos == ((turnout->status >> TURNOUT_POS_BV) & 0x01))
+    return 0;
   // Put it in "moving state" and set new position
   turnout->status |= (1 << TURNOUT_MOV_BV);
   if (pos)
     turnout->status |= 1 << TURNOUT_POS_BV;
   else
     turnout->status &= ~(1 << TURNOUT_POS_BV);
-  DEBUGLN(turnout->status);
   return 0; // No error
 }
 
