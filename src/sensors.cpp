@@ -115,14 +115,14 @@ void save_cfg_sensor(int ee_add,sensor_cfg_t * sensor)
   if (sensor->status & 1)
     subadd |= (1 << EE_SENSOR_SUB_VALUE_BV);
     
-  EEPROM.write(ee_add, subadd);
-  EEPROM.write(ee_add+1,pin);
+  EEPROM.update(ee_add, subadd);
+  EEPROM.update(ee_add+1,pin);
   // Mark as saved in eeprom
   sensor->status |= (1 << SENSOR_SYNC_BV);
   ee_add-=CFG_SENSOR_SIZE;
   if (ee_add<eeprom_sensor_end) {  
     eeprom_sensor_end=ee_add;
-    EEPROM.write(eeprom_sensor_end,0);  // Marks the end of the sensors
+    EEPROM.update(eeprom_sensor_end,0);  // Marks the end of the sensors
   }
   DEBUG(subadd);
   DEBUG(" ");
@@ -146,7 +146,7 @@ void update_cfg_sensor(byte subadd,byte pin,byte status,int ee_add=-1)
   if (status & 1)
     subadd |= (1 << EE_SENSOR_SUB_VALUE_BV);
 
-  EEPROM.write(ee_add, subadd);
+  EEPROM.update(ee_add, subadd);
   
   if (status & (1 << SENSOR_PULLUP_BV))
     pin |= (1<<EE_SENSOR_PIN_PULLUP_BV);

@@ -50,6 +50,7 @@ ISR(TIMER2_OVF_vect)
   }
 }
 
+void noop() {}
 
 int find_free_servo()  // returns the index of the first free servo, -1 if none
 {
@@ -69,9 +70,9 @@ void config_pins_turnout(turnout_cfg_t * turn)
   pinMode(turn->servo_pin, OUTPUT);
   // Set up relay pin, 0xFE means not used
   if (turn->relay_pin_1!=0xFE)
-    pinMode(turn->relay_pin_1, OUTPUT);
+    pinMode(turn->relay_pin_1 & 0x80, OUTPUT);
   if (turn->relay_pin_2!=0xFE)
-    pinMode(turn->relay_pin_2, OUTPUT);
+    pinMode(turn->relay_pin_2 & 0x80, OUTPUT);
 }
 
 // Config pin I/O for a sensor and also set the outputs to their last known state
@@ -109,7 +110,6 @@ bool load_turnouts()
     } else {
       turnout_cfg_t * turn = read_cfg_turn(ee_add);
       if (turn) {
-        turn->status= (1<<TURNOUT_SYNC_BV) + NO_SERVO;   // sync with eeprom and no servo attached
         // Add turnout so that the list of turnouts is sorted in ascending order with respect to subaddress
         turnout_cfg_t * place = find_last_turn_before(turn->subadd);
         if (place) {
@@ -281,6 +281,18 @@ int write_one_turnout(byte subadd)
     turnout->status |= 1 << TURNOUT_POS_BV;
   else
     turnout->status &= ~(1 << TURNOUT_POS_BV);
+  turnout->status &= ~(1<<TURNOUT_SYNC_BV);
+  if (!save_cfg_to_eeprom)
+    return 0;
+  // save position to eeprom
+  int ee_add = ee_find_cfg_turnout(turnout->subadd);
+  if (ee_add<0) { // not yet synced to eeprom, add it
+    ee_add = ee_find_free_turnout();
+    if (ee_add<0)
+      return -EEPROM_FULL;
+    save_cfg_turnout(ee_add,turnout);
+  }
+  else update_cfg_turnout(turnout,ee_add);
   return 0; // No error
 }
 
@@ -306,11 +318,19 @@ int write_one_sensor(byte subadd)
     digitalWrite(sensor->sensor_pin, LOW);
     sensor->status &= 0xFE;
   }
-  sensor->status &= ~(1 << SENSOR_SYNC_BV); // No more synced in EEPROM
-  DEBUG(sensor->sensor_pin);
-  DEBUG(F(" "));
-  DEBUGLN(pos);
-  return 0;  // No error
+  sensor->status &= ~(1<<SENSOR_SYNC_BV);
+  if (!save_cfg_to_eeprom)
+    return 0;  // No error
+  // save state to eeprom
+  int ee_add = ee_find_cfg_sensor(sensor->subadd);
+  if (ee_add<0) { // not yet synced to eeprom, add it
+    ee_add = ee_find_free_sensor();
+    if (ee_add<0)
+      return -EEPROM_FULL;
+  }
+  update_cfg_sensor(sensor->subadd,sensor->sensor_pin,sensor->status,ee_add);
+  sensor->status |= (1<<SENSOR_SYNC_BV);
+  return 0; // No error  
 }
 
 // Write to several turnouts/sensors
@@ -340,25 +360,27 @@ void write_all_turnouts()
 {
   DEBUGLN(F("Writing to all turnouts"));
   byte pos=2;        // current byte in the commmand
-  byte bit_index=6; // bit number in the current byte (MSB is not used for values)
+  byte bit_index=0; // bit number in the current byte (MSB is not used for values)
   
   turnout_cfg_t * turn;
   for (turn = turnout_cfg_head;turn;turn=turn->next) {
-    if ((bit_index==0) && (command_buf[pos] & 0x80)) // this must be the end of the bits stream
+    if (command_buf[pos] & 0x80) // this must be the end of the bits stream
       break;
-    byte turn_pos = (command_buf[pos]>> SUB_VALUE_BV) & 0x01;
-    // Put it in "moving state" and set new position
-    turn->status |= (1 << TURNOUT_MOV_BV);
-    if (turn_pos)
-      turn->status |= 1 << TURNOUT_POS_BV;
-    else
-      turn->status &= ~(1 << TURNOUT_POS_BV);
-    if (bit_index==0) { // next byte
-      bit_index = 6;
+    byte turn_pos = (command_buf[pos]>> bit_index) & 0x01;
+    if (turn_pos != ((turn->status >> TURNOUT_POS_BV)&0x01)) {
+      // Put it in "moving state" and set new position
+      turn->status |= (1 << TURNOUT_MOV_BV);
+      if (turn_pos)
+        turn->status |= 1 << TURNOUT_POS_BV;
+      else
+        turn->status &= ~(1 << TURNOUT_POS_BV);
+    }
+    if (bit_index==6) { // next byte
+      bit_index = 0;
       pos+=1;
     }
     else
-      bit_index--;
+      bit_index++;
   }
   if (turn) {
     DEBUGLN(F("Not all turnouts have been written to!"));
@@ -370,24 +392,24 @@ void write_all_sensors()
 {
   DEBUGLN(F("Writing to all sensors"));
   byte pos=2;        // current byte in the commmand
-  byte bit_index=6; // bit number in the current byte (MSB is not used for values)
+  byte bit_index=0; // bit number in the current byte (MSB is not used for values)
   
   sensor_cfg_t * sensor;
   for (sensor = sensor_cfg_head;sensor;sensor=sensor->next) {
     if (!(sensor->status & (1<<SENSOR_IO_BV))) { // Process only output sensors
-      if ((bit_index==0) && (command_buf[pos] & 0x80)) // this must be the end of the bits stream
+      if (command_buf[pos] & 0x80) // this must be the end of the bits stream
         break;
      byte sensor_val = (command_buf[pos] >> SUB_VALUE_BV) & 0x01;
       if (sensor_val)
         sensor->status |= 1;
       else
         sensor->status &= 0xFE;
-      if (bit_index==0) { // next byte
-        bit_index = 6;
+      if (bit_index==6) { // next byte
+        bit_index = 0;
         pos+=1;
       }
       else
-        bit_index--;
+        bit_index++;
     }
   }
   if (sensor) {
@@ -699,7 +721,7 @@ int config_one_turnout(byte pos)
   if (cfg) {
     DEBUGLN(F("Updating turnout"));
     // exists already, update it
-    cfg->servo_pin=command_buf[pos+1] & 0x7F;  // For now all relays are pulsed (latching relays)
+    cfg->servo_pin=command_buf[pos+1];  
     cfg->straight_pos = command_buf[pos+2];
     cfg->thrown_pos = command_buf[pos+3];
     if (command_buf[pos] & (1<<SUB_RELAY_PIN_BV)) { // relay pins present
@@ -793,18 +815,12 @@ int config_one_sensor(byte pos)
     // this cfg exists so just update it
     cfg->sensor_pin = command_buf[pos+1] & 0x7F;
     if (save_cfg_to_eeprom)
-      update_cfg_sensor(command_buf[pos]&0x3F,cfg->sensor_pin,status);       
-    cfg->status=status | (1<<SENSOR_SYNC_BV);
+      update_cfg_sensor(command_buf[pos]&0x3F,cfg->sensor_pin,status);  
+    else
+      cfg->status=status | (1<<SENSOR_SYNC_BV);     
     DEBUG(F("Updating sensor="));
     DEBUGLN(cfg->subadd);
   } else {
-    DEBUG("New sensor=");
-    DEBUGLN(command_buf[pos] & 0x3F);
-
-    if (!room_in_eeprom(CFG_SENSOR_SIZE)) {
-      DEBUGLN(F("EEPROM full"));
-      return -EEPROM_FULL;
-    }
     // Allocate new config struct and populate it
     cfg = new sensor_cfg_t;
     if (!cfg) {
@@ -826,12 +842,17 @@ int config_one_sensor(byte pos)
       sensor_cfg_head = cfg;
     }
     // save it to eeprom
-    if (save_cfg_to_eeprom)
-        save_cfg_sensor(ee_find_free_sensor(),cfg);
+    if (save_cfg_to_eeprom) {
+      int ee_add = ee_find_free_sensor();
+      if (ee_add<0) {
+        DEBUGLN(F("EEPROM full"));
+        return -EEPROM_FULL;
+      }
+      save_cfg_sensor(ee_add,cfg);
+    }
+    else
+      cfg->status=status | (1<<SENSOR_SYNC_BV);
   }
-  char sensor_str[20];
-  sensor_cfg_to_str(cfg, sensor_str);
-  DEBUG(sensor_str);
   // config pins
   config_pins_sensor(cfg, false);
   return 2;
@@ -953,16 +974,28 @@ bool in_range(byte val,byte bound_1,byte bound_2)
 void begin_pin_pulse(turnout_cfg_t * turn)
 {
   byte pin;
-  if (turn->status & (1 << TURNOUT_POS_BV)) // which position
+  bool first = true;
+  if (turn->status & (1 << TURNOUT_POS_BV)) {// which position
     pin = turn->relay_pin_2;
+    first = false;
+  }
   else
     pin = turn->relay_pin_1; 
-  if (pin==0xFE)
-    return;
   // Setup the pin for a pulse
-  noInterrupts();
-  pulse_relay_pins[turn->status & 0x1F]=pin;
-  interrupts();
+  if (pin & (1<<PIN_RELAY_PULSE_BV)) {
+    noInterrupts();
+    pulse_relay_pins[turn->status & 0x1F]=pin & 0x80;
+    interrupts();
+  } else {
+    // Non pulse relay so switch one ON the other OFF
+    if (first && (turn->relay_pin_2!=0xFE))
+      digitalWrite(turn->relay_pin_2 & 0x80, LOW);
+    else if (!first && (turn->relay_pin_1!=0xFE))
+      digitalWrite(turn->relay_pin_1 & 0x80, LOW);
+    if (pin != 0xFE)
+      digitalWrite(pin & 0x80, HIGH);
+  }
+  
 }
 
 // Move all turnouts that have been activated
@@ -1150,10 +1183,10 @@ bool check_rwcmd_2nd_stage()
 {
   if (cmd_pos<2)
     return false;
-  Serial.print("rwcmd_2");
-  Serial.println(command_buf[0]);
+  DEBUGLN("rwcmd_2");
+  DEBUGLN(command_buf[0]);
   if (command_buf[0] & (1 << CMD_ALL_BV)) { // read or write ALL
-    Serial.println("All R or W");
+    DEBUGLN("All R or W");
     if (!(command_buf[0] & (1 << CMD_RWDIR_BV))) // read all command
     {
       if (command_buf[0] & (1 << CMD_SENS_TURN_BV))

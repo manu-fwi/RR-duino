@@ -29,8 +29,8 @@ struct turnout_cfg_t
   byte straight_pos;
   byte thrown_pos;
   byte current_pos; // turnout pos
-  byte relay_pin_1; // activated when set to straight (=254 if unneeded)
-  byte relay_pin_2; // activated when set to thrown (=254 if unneeded)
+  byte relay_pin_1; // activated when set to straight (=254 if unneeded)  (B7 = 1 <=> relay pin must be pulsed)
+  byte relay_pin_2; // activated when set to thrown (=254 if unneeded)    (B7 = 1 <=> relay pin must be pulsed)
   /*
    *  B7=1 => synced in eeprom
    *  B6=0: not moving =1:moving
@@ -50,8 +50,8 @@ struct turnout_cfg_t
  * servo_pin (byte)  : B7 = last known value
  * straight_pos (byte)
  * thrown_pos (byte)
- * relay pin 1 (byte) 254 if not set
- * relay pin 2 (byte) 254 if not set
+ * relay pin 1 (byte) 254 if not set (B7 = 1 <=> relay pin must be pulsed)
+ * relay pin 2 (byte) 254 if not set (B7 = 1 <=> relay pin must be pulsed)
  */
 
 #ifdef TURNOUT_COMB

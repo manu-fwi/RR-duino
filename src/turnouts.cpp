@@ -244,13 +244,15 @@ void update_cfg_turnout(turnout_cfg_t * cfg, int ee_add=-1) //update turnout cfg
   EEPROM.update(ee_add++,cfg->relay_pin_1);
   EEPROM.update(ee_add++,cfg->relay_pin_2);
   cfg->status |= (1<< TURNOUT_SYNC_BV);
-  DEBUGLN(F("update cfg_t"));
 }
 
 void save_cfg_turnout(int ee_add,turnout_cfg_t * cfg)  // Save new cfg turnout
 {
+  byte servo_pin = cfg->servo_pin;
+  if (cfg->status & (1 << TURNOUT_POS_BV))
+    servo_pin |= (1 << EE_TURNOUT_POS_BV);
   EEPROM.update(ee_add++,cfg->subadd);
-  EEPROM.update(ee_add++,cfg->servo_pin);
+  EEPROM.update(ee_add++,servo_pin);
   EEPROM.update(ee_add++,cfg->straight_pos);
   EEPROM.update(ee_add++,cfg->thrown_pos);
   EEPROM.update(ee_add++,cfg->relay_pin_1);

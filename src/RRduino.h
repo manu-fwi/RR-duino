@@ -48,8 +48,10 @@ extern bool save_cfg_to_eeprom;
 // This pin must be held LOW to enable the "set address mode"
 #define ADDRESS_MODE_PIN 2
 
+void noop();
 // DEBUG MACRO
 #define DEBUG(msg) Serial.print(msg)
 #define DEBUGLN(msg) Serial.println(msg)
-
+//#define DEBUG(msg) noop()
+//#define DEBUGLN(msg) noop()
 #endif // RRDUINO_H
