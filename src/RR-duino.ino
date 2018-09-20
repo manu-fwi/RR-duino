@@ -814,12 +814,10 @@ int config_one_sensor(byte pos)
   if (cfg) {
     // this cfg exists so just update it
     cfg->sensor_pin = command_buf[pos+1] & 0x7F;
-    if (save_cfg_to_eeprom)
-      update_cfg_sensor(command_buf[pos]&0x3F,cfg->sensor_pin,status);  
-    else
-      cfg->status=status | (1<<SENSOR_SYNC_BV);     
-    DEBUG(F("Updating sensor="));
-    DEBUGLN(cfg->subadd);
+    if (save_cfg_to_eeprom) {
+      update_cfg_sensor(command_buf[pos]&0x3F,cfg->sensor_pin,status);
+      cfg->status=status | (1<<SENSOR_SYNC_BV);
+    }
   } else {
     // Allocate new config struct and populate it
     cfg = new sensor_cfg_t;
@@ -850,8 +848,6 @@ int config_one_sensor(byte pos)
       }
       save_cfg_sensor(ee_add,cfg);
     }
-    else
-      cfg->status=status | (1<<SENSOR_SYNC_BV);
   }
   // config pins
   config_pins_sensor(cfg, false);
@@ -981,7 +977,7 @@ void begin_pin_pulse(turnout_cfg_t * turn)
   }
   else
     pin = turn->relay_pin_1; 
-  // Setup the pin for a pulse
+  // Is it a pulsed pin
   if (pin & (1<<PIN_RELAY_PULSE_BV)) {
     noInterrupts();
     pulse_relay_pins[turn->status & 0x1F]=pin & 0x80;
@@ -1020,9 +1016,9 @@ void process_turnouts()
           begin_pin_pulse(cur); // pulse the relay immediately
           // Setup the pos right before the end position
           if (cur->status & (1 << TURNOUT_POS_BV))
-            cur->current_pos = cur->thrown_pos-dir;
+            cur->current_pos = cur->thrown_pos-10*dir;
           else
-            cur->current_pos = cur->straight_pos+dir;
+            cur->current_pos = cur->straight_pos+10*dir;
         } else {
           // Put the correct current position
           if (cur->status & (1 << TURNOUT_POS_BV))

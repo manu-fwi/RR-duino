@@ -42,7 +42,7 @@ int ee_find_cfg_sensor(byte subadd)
   int ee_add=EEPROM.length()-CFG_SENSOR_SIZE;
 
   byte first = EEPROM.read(ee_add);
-  while ((first&0x7F)!=(subadd&0x7F)) { // Check subadd whitout taking B7 (indicates I/O)
+  while ((first&0x3F)!=(subadd&0x3F)) { // Check subadd whitout taking B7 (indicates I/O) and B6 (value)
     if (first==0) {
       if (eeprom_sensor_end<0)
       // Set end of eeprom if not set already
