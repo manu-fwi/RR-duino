@@ -251,8 +251,9 @@ def check_device_clicked(b):
         device_status.redraw()
 
 def set_address_clicked(b):
-    device_status.t=set_add()
-    device_status.redraw() 
+    if check_connection():
+        device_status.t=set_add()
+        device_status.redraw() 
 
 def debug(*args,**keywords):
     pass
@@ -261,7 +262,6 @@ messages=[]
 serial_port = "/dev/ttyUSB1"
 serial_speed = 19200
 s = serial_bus.serial_bus(serial_port,serial_speed)
-s.start()
 address=0
 subaddress = 0
 turnout = False
@@ -288,12 +288,12 @@ with Context():
     d.add(37,2,"Address:")
     address_entry = WTextEntry(20, str(address))
     d.add(46, 2, address_entry)
-    check_device_button = WButton(12,"Check")
-    check_device_button.on("click",check_device_clicked)
-    d.add(37,3,check_device_button)
-    set_address_button = WButton(12,"Set address")
-    d.add(50,3,set_address_button)
+    set_address_button = WButton(13,"Set address")
+    d.add(37,3,set_address_button)
     set_address_button.on("click",set_address_clicked)
+    check_device_button = WButton(15,"Check device")
+    check_device_button.on("click",check_device_clicked)
+    d.add(51,3,check_device_button)
     device_status = WLabel("Unknown state",33)
     d.add(37,4,device_status)
     d.loop()
