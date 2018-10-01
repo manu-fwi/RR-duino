@@ -16,6 +16,26 @@ def status():
         print("deleting index",i," len = ",len(messages))
         messages.pop(i)
 
+def set_status(status):
+    global device_status
+    
+    device_status.t=status
+    device_status.redraw()
+
+def set_eeprom_status():
+    global eeprom_status,eeprom_state
+    
+    if not eeprom_state[0]:
+        result = "Not loaded"
+    else:
+        result = "Loaded"
+    if not eeprom_state[1]:
+        result+=" / Not storing"
+    else:
+        result+=" / Storing"
+    eeprom_status.t=result
+    eeprom_status.redraw()
+    
 def wait_for_answer(min_length):
     m=b""
     beg = time.time()
@@ -25,43 +45,60 @@ def wait_for_answer(min_length):
             m+=s.read()
             beg = time.time()
     if len(m)==0:
-        return "Device not responding"
+        return (None,"Device not responding")
   
     elif m[-1]&0x7F!=0:
-        return "Error "+str(m[-1]&0x7F)
+        return (None,"Error "+str(m[-1]&0x7F))
  
     else:
-        return "OK"
+        return (m[3:],"OK")
 
 def get_address():
-    global address
+    global address,address_entry,eeprom_state
     try:
         new_address = int(address_entry.get())
     except:
         new_address =address
     if new_address!=address:
         address = new_address
+        set_status("Unknown state")
+        eeprom_state=[None,None]
+        set_eeprom_status()
         
-def load_from_eeprom():
-    s.send(bytes((0xFF,0b10111001,address)))
-    return wait_for_answer(3)
+def load_eeprom_clicked(b):
+    if check_connection():
+        s.send(bytes((0xFF,0b10111001,address)))
+        answer,status = wait_for_answer(3)
+        set_status(status)
+        eeprom_state[0] = answer is not None
+        set_eeprom_status()
         
-def clear_eeprom():
-    s.send(bytes((0xFF,0b11111001,address)))
-    return wait_for_answer(3)
+def clear_eeprom_clicked(b):
+    if check_connection():
+        s.send(bytes((0xFF,0b11111001,address)))
+        set_status(wait_for_answer(3)[1])
         
-def store_to_eeprom():
-    s.send(bytes((0xFF,0b10101001,address)))
-    return wait_for_answer(3)
+def store_eeprom_clicked(b):
+    if check_connection():
+        s.send(bytes((0xFF,0b10101001,address)))
+        answer,status = wait_for_answer(3)
+        eeprom_state[1] = answer is not None
+        set_status(status)
+        set_eeprom_status()
 
 def set_add():
     #Set address
     s.send(bytes((0xFF,0b10011001,address)))
-    return wait_for_answer(3)
+    return wait_for_answer(3)[1]
 
 def get_version():
+    global device_version
     s.send(bytes((0xFF,0b10001001,address)))
-    return wait_for_answer(3)
+    answer,msg = wait_for_answer(3)
+    if answer is not None:
+        device_version.t=str(answer[0])
+        device_version.redraw()
+    return msg
 
 def config_cmd(cmd):
     add = check_add(cmd[1])
@@ -203,7 +240,8 @@ def write_cmd(cmd):
 class DialogNew(Dialog):
     def __init__(self, x, y, w=0, h=0, title=""):
         super().__init__(x,y,w,h,title)
-
+        self.exit = False
+        
     def loop(self):
         self.redraw()
         while True:
@@ -212,6 +250,8 @@ class DialogNew(Dialog):
 
             if res is not None and res is not True:
                 return res
+            if self.exit:
+                return ACTION_CANCEL
             self.idle()
     def idle(self):
         pass
@@ -223,41 +263,151 @@ def connect_clicked(b):
         s.stop()
         connect_state = False
     else:
-        try:
+        #try:
             s.start()
             connect_button.t="Disconnect"
             connect_state = True
-        except:
+        #except:
             pass
     connect_button.redraw()
 
 def check_connection():
     if not connect_state:
-        device_status.t="Serial port not connected!"
-        device_status.redraw()
+        set_status("Serial port not connected!")
         return False
     get_address()
     if address==0:
-        device_status.t="Address 0 is invalid!"
-        device_status.redraw()
+        set_status("Address 0 is invalid!")
         return False
     return True
     
 def check_device_clicked(b):
     if check_connection():
-        device_status.t="Checking device..."
-        device_status.redraw()
-        device_status.t=get_version()
-        device_status.redraw()
+        set_status("Checking device...")
+        set_status(get_version())
 
 def set_address_clicked(b):
     if check_connection():
-        device_status.t=set_add()
-        device_status.redraw() 
+        set_status(set_add())
 
 def debug(*args,**keywords):
     pass
 
+def turnout_clicked(b):
+    global next_dialog
+    next_dialog = turnout_dialog
+    main_dialog_w.exit = True
+
+def sensor_clicked(b):
+    global next_dialog,main_dialog_w
+    if not check_connection():
+        return
+    next_dialog = sensor_dialog
+    main_dialog_w.exit = True
+
+    
+def main_dialog():
+    global next_dialog,device_status,device_version,eeprom_status,connect_state,connect_button,address_entry
+    global main_dialog_w
+    
+    Screen.attr_color(C_WHITE, C_BLUE)
+    Screen.cls()
+    Screen.attr_reset()
+    main_dialog_w = DialogNew(5, 5, 70, 15,title="RR-DUINO SETUP")
+    next_dialog = None
+
+    main_dialog_w.add(1, 1, WFrame(35, 5, "Serial Port"))
+    main_dialog_w.add(2, 2, "Port:")
+    port_entry = WTextEntry(20, serial_port)
+    main_dialog_w.add(11, 2, port_entry)
+    main_dialog_w.add(2, 3, "Speed:")
+    baudrate_entry = WTextEntry(20, str(serial_speed))
+    main_dialog_w.add(11, 3,baudrate_entry)
+    connect_button = WButton(12,"Connect")
+    connect_state = False #begin disconnected
+    connect_button.on("click",connect_clicked)
+    main_dialog_w.add(11,4,connect_button)
+
+    main_dialog_w.add(36,1,WFrame(35,5,"Device"))
+    main_dialog_w.add(37,2,"Address:")
+    address_entry = WTextEntry(20, str(address))
+    main_dialog_w.add(46, 2, address_entry)
+    set_address_button = WButton(13,"Set address")
+    main_dialog_w.add(37,3,set_address_button)
+    set_address_button.on("click",set_address_clicked)
+    check_device_button = WButton(15,"Check device")
+    check_device_button.on("click",check_device_clicked)
+    main_dialog_w.add(51,3,check_device_button)
+    main_dialog_w.add(37,4,"Version:")
+    device_version = WLabel("Unknown",23)
+    main_dialog_w.add(45,4,device_version)
+    
+    main_dialog_w.add(1,6,WFrame(63,4,"Device setup"))
+
+    main_dialog_w.add(2,7,"Status:")
+    device_status = WLabel("Unknown state",26)
+    main_dialog_w.add(10,7,device_status)
+    eeprom_status = WLabel("Not loaded / Not storing",25)
+    main_dialog_w.add(37,7,eeprom_status)
+    load_eeprom_button = WButton(15,"Load EEPROM")
+    load_eeprom_button.on("click",load_eeprom_clicked)
+    main_dialog_w.add(2,8,load_eeprom_button)
+    store_eeprom_button = WButton(15,"Store to EEPROM")
+    store_eeprom_button.on("click",store_eeprom_clicked)
+    main_dialog_w.add(18,8,store_eeprom_button)
+    clear_eeprom_button = WButton(15,"Clear EEPROM")
+    clear_eeprom_button.on("click",clear_eeprom_clicked)
+    main_dialog_w.add(34,8,clear_eeprom_button)
+
+    main_dialog_w.add(1,10,WFrame(63,3,"Setup"))
+    turnout_button = WButton(15,"Turnouts setup")
+    turnout_button.on("click",turnout_clicked)
+    main_dialog_w.add(2,11,turnout_button)
+    sensor_button = WButton(15,"Sensors setup")
+    sensor_button.on("click",sensor_clicked)
+    main_dialog_w.add(18,11,sensor_button)
+    main_dialog_w.loop()
+
+def sensor_commit_clicked(b):
+    pass
+
+def load_sensors():
+    pass
+    
+def sensor_dialog():
+    global sensor_subadd_entry,sensor_pin_entry,sensor_io
+    Screen.attr_color(C_WHITE, C_BLUE)
+    Screen.cls()
+    Screen.attr_reset()
+    sensor_dialog_w = DialogNew(1, 1, 70, 20,title="RR-DUINO SENSOR SETUP")
+
+    sensor_dialog_w.add(1,1,WFrame(58,3,"Device setup address "+str(address)))
+
+    sensor_dialog_w.add(2,2,"Status:")
+    device_status = WLabel("Unknown state",22)
+    sensor_dialog_w.add(10,2,device_status)
+    eeprom_status = WLabel("Not loaded / Not storing",25)
+    sensor_dialog_w.add(32,2,eeprom_status)
+
+    sensor_dialog_w.add(1,4,WFrame(25,8,"New sensor"))
+    sensor_dialog_w.add(2,5,"Subaddress:")
+    sensor_subadd_entry=WTextEntry(5,"0")
+    sensor_dialog_w.add(14,5,sensor_subadd_entry)
+    sensor_dialog_w.add(2,6,"Pin:")
+    sensor_pin_entry=WTextEntry(5,"0")
+    sensor_dialog_w.add(14,6,sensor_pin_entry)
+    sensor_io = WRadioButton(["input","input with pull-up","output"])
+    sensor_dialog_w.add(2,7,sensor_io)
+    sensor_commit_button = WButton(15,"Commit sensor")
+    sensor_commit_button.on("click",sensor_commit_clicked)
+    sensor_dialog_w.add(5,10,sensor_commit_button)
+
+    sensor_dialog_w.loop()
+    next_dialog = None
+
+def turnout_dialog():
+    pass
+    
 messages=[]
 serial_port = "/dev/ttyUSB1"
 serial_speed = 19200
@@ -265,39 +415,18 @@ s = serial_bus.serial_bus(serial_port,serial_speed)
 address=0
 subaddress = 0
 turnout = False
-with Context():
-
-    Screen.attr_color(C_WHITE, C_BLUE)
-    Screen.cls()
-    Screen.attr_reset()
-    d = DialogNew(5, 5, 70, 12,title="RR-DUINO SETUP")
-
-    d.add(1, 1, WFrame(35, 5, "Serial Port"))
-    d.add(2, 2, "Port:")
-    port_entry = WTextEntry(20, serial_port)
-    d.add(11, 2, port_entry)
-    d.add(2, 3, "Speed:")
-    baudrate_entry = WTextEntry(20, str(serial_speed))
-    d.add(11, 3,baudrate_entry)
-    connect_button = WButton(12,"Connect")
-    connect_state = False #begin disconnected
-    connect_button.on("click",connect_clicked)
-    d.add(12,4,connect_button)
-
-    d.add(36,1,WFrame(35,5,"Device"))
-    d.add(37,2,"Address:")
-    address_entry = WTextEntry(20, str(address))
-    d.add(46, 2, address_entry)
-    set_address_button = WButton(13,"Set address")
-    d.add(37,3,set_address_button)
-    set_address_button.on("click",set_address_clicked)
-    check_device_button = WButton(15,"Check device")
-    check_device_button.on("click",check_device_clicked)
-    d.add(51,3,check_device_button)
-    device_status = WLabel("Unknown state",33)
-    d.add(37,4,device_status)
-    d.loop()
-    
+next_dialog = None
+device_status = device_version = connect_state = connect_button = eeprom_status = main_dialog_w = None
+sensor_pin_entry = sensor_io = sensor_subadd_entry = None
+eeprom_state = [False,False]
+while True:
+    with Context():
+        main_dialog()
+        if next_dialog is None:
+            break
+        next_dialog()
+        
+s.stop()
 
 #while not done:
 #    read_sockets=wait_for_clients()
