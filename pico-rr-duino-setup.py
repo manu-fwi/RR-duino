@@ -52,6 +52,45 @@ def wait_for_answer(min_length):
  
     else:
         return (m[3:],"OK")
+    
+def decode(m):
+    res=""
+    for b in m:
+        res += " "+str(b)
+    return res
+
+def wait_for_show_answer(turnouts=False):
+    m=b""
+    beg = time.time()
+    next_subadd_pos = 3
+    while time.time()<beg+ANSWER_TIMEOUT:
+        s.process_IO()
+        if s.available():
+            m+=s.read()
+            sensors_list.append(decode(m))
+            beg = time.time()
+            if len(m)==next_subadd_pos+1 and (m[next_subadd_pos] & 0x80!=0):
+                #end of the message
+                break
+            elif len(m)>next_subadd_pos:
+                #compute next subbaddress pos
+                if not turnouts:
+                    next_subadd_pos+=2
+                else:
+                    next_subadd_pos+=4
+                    #check if relay pins are needed for this turnout
+                    if (m[next_subadd_pos] & (1<<6))!=0:
+                        next_subadd_pos+=2
+                
+    if len(m)==0:
+        return (None,"Device not responding")
+  
+    elif m[-1]&0x7F!=0:
+        return (None,"Error "+str(m[-1]&0x7F))
+ 
+    else:
+        return (m,"OK")
+
 
 def get_address():
     global address,address_entry,eeprom_state
@@ -372,10 +411,25 @@ def sensor_commit_clicked(b):
     pass
 
 def load_sensors():
-    pass
+    global sensors_list,device_status
+
+    sensors_list = []
+    done = False
+    while not done:
+        #send command
+        c= 0b11001001
+        s.send(bytes((0xFF,c,address)))
+        msg,code = wait_for_show_answer()
+        device_status.t=code
+        if msg is None:
+            done=True
+        else:
+            #check if there is another answer pending
+            done = (msg[1]& (1<<1))==0
     
 def sensor_dialog():
-    global sensor_subadd_entry,sensor_pin_entry,sensor_io
+    global sensor_subadd_entry,sensor_pin_entry,sensor_io,sensors_list,device_status
+
     Screen.attr_color(C_WHITE, C_BLUE)
     Screen.cls()
     Screen.attr_reset()
@@ -402,6 +456,11 @@ def sensor_dialog():
     sensor_commit_button.on("click",sensor_commit_clicked)
     sensor_dialog_w.add(5,10,sensor_commit_button)
 
+    load_sensors()
+
+    sensor_dialog_w.add(26,4,WFrame(30,8,"Sensors"))
+    sensor_dialog_w.add(27,5,WListBox(28,6,sensors_list))
+
     sensor_dialog_w.loop()
     next_dialog = None
 
@@ -419,6 +478,7 @@ next_dialog = None
 device_status = device_version = connect_state = connect_button = eeprom_status = main_dialog_w = None
 sensor_pin_entry = sensor_io = sensor_subadd_entry = None
 eeprom_state = [False,False]
+sensors_list = []
 while True:
     with Context():
         main_dialog()

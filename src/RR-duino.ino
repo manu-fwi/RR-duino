@@ -672,16 +672,24 @@ void show_sensors_cmd(byte limit)
     byte pos = 2; // beginning of the payload of the command
     command_buf[0] &= ~(1 << CMD_CMD_ANSWER_BV); // Unset command bit ( this is an answer )
     command_buf[1]|= (1<<ADD_LIST_BV); // Set the "list" bit
-    for (sensor_cfg_t * sensor = sensor_cfg_head;sensor;sensor=sensor->next) {
-      pos += show_one_sensor(sensor,command_buf+pos);
-      if ((pos+3>MAX_CMD_LEN) || !sensor->next)
-      { // current command is full or we are done so queue the current answer
-        byte * data = (byte*) new byte[pos+1]; // Allocate mem
-        memcpy(data, command_buf, pos+1); // copy answer
-        data[pos]=0x80; // Add termination
-        queue_answer(data, pos+1);
-        pos = 2; // reset position
+    if (sensor_cfg_head) 
+      for (sensor_cfg_t * sensor = sensor_cfg_head;sensor;sensor=sensor->next) {
+        pos += show_one_sensor(sensor,command_buf+pos);
+        if ((pos+3>MAX_CMD_LEN) || !sensor->next)
+        { // current command is full or we are done so queue the current answer
+          byte * data = (byte*) new byte[pos+1]; // Allocate mem
+          memcpy(data, command_buf, pos+1); // copy answer
+          data[pos]=0x80; // Add termination
+          queue_answer(data, pos+1);
+          pos = 2; // reset position
+        }
       }
+    else {
+      // Empty answer
+      byte * data = (byte*) new byte[3];
+      memcpy(data,command_buf,2);
+      data[2]=0x80;
+      queue_answer(data, 3); 
     }
   }
   send_answers(); // send them; some might not be sent (depending on the limit), they will be sent on the next show command
@@ -694,16 +702,23 @@ void show_turnouts_cmd(byte limit)
     byte pos = 2; // beginning of the payload of the command
     command_buf[0] &= ~(1 << CMD_CMD_ANSWER_BV); // Unset command bit ( this is an answer )
     command_buf[1]|= (1<<ADD_LIST_BV); // Set the "list" bit
-    for (turnout_cfg_t * turn = turnout_cfg_head;turn;turn=turn->next) {
-      pos += show_one_turnout(turn,command_buf+pos);
-      if ((pos+7>MAX_CMD_LEN) || !turn->next)
-      { // command is full or last turnout so queue the current answer
-        byte * data = (byte*) new byte[pos+1]; // Allocate mem
-        memcpy(data, command_buf, pos+1); // copy answer
-        data[pos]=0x80; // Add termination no error
-        queue_answer(data, pos+1);
-        pos = 2; // reset position
+    if (turnout_cfg_head)
+      for (turnout_cfg_t * turn = turnout_cfg_head;turn;turn=turn->next) {
+        pos += show_one_turnout(turn,command_buf+pos);
+        if ((pos+7>MAX_CMD_LEN) || !turn->next)
+        { // command is full or last turnout so queue the current answer
+          byte * data = (byte*) new byte[pos+1]; // Allocate mem
+          memcpy(data, command_buf, pos+1); // copy answer
+          data[pos]=0x80; // Add termination no error
+          queue_answer(data, pos+1);
+          pos = 2; // reset position
+        }
       }
+    else {
+      byte * data = (byte*) new byte[3];
+      memcpy(data,command_buf,2);
+      data[2]=0x80;
+      queue_answer(data, 3);
     }
   }
   send_answers(); // send them; some might not be sent (depending on the limit), they will be sent on the next show command
