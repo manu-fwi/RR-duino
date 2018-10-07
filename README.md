@@ -25,3 +25,5 @@ Features:
 - you can set more turnouts than the maximum number of servos the arduino can handle (typically 12 for a uno/leonardo and 48 for a mega) as a "pool" of servos is used to work around this limitation. The pool size can be changed (though you have to modify a constant in the turnouts.h, NB_SERVOS, max is 12 for uno (servo library limit) and 48 for a mega for example. Make sure your power supply can handle that many servos moving at the same time.
 
 Note for the servo control of a turnout: just set the servo to 90° position before mounting it; mount it on the turnout (no need to set the extreme position, it does not matter if the turnout is not straight or thrown). Then use the fine tuning command to find the precise positions for straight/thrown, and then config the servo positions accordingly.
+
+NEW: now there is a python script (pico-rr-duino-setup.py) that enables you to setup all your sensors/turnouts via a text user interface (see the wiki page)!
