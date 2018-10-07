@@ -652,6 +652,13 @@ def fine_tune_turnout(pos):
         return True
     return False
 
+def adjust_fine_tune_pos(w):
+    turn = w.items[w.choice]
+    turnout_data.fine_tune_pos = (int(turn[15:18])+int(turn[21:24]))//2
+    turnout_data.fine_tune_label.t = pad_int(turnout_data.fine_tune_pos,3)
+    turnout_data.fine_tune_label.redraw()
+    print("changed")
+    
 def turnout_dialog():
     global turnout_data
 
@@ -702,21 +709,22 @@ def turnout_dialog():
     turnout_data.list_wg=WListBox(40,10,turnout_data.turnouts_list)
     turnout_data.dialog_w.add(26,4,WFrame(42,12,"Turnouts"))
     turnout_data.dialog_w.add(27,5,turnout_data.list_wg)
+    turnout_data.list_wg.on("changed",adjust_fine_tune_pos)
 
     fine_tune = WButton(5,"<<")
     fine_tune.on("click",fine_tune_turnout_MINUS)
-    turnout_data.dialog_w.add(27,16,fine_tune)
+    turnout_data.dialog_w.add(32,16,fine_tune)
     fine_tune = WButton(5,"<")
     fine_tune.on("click",fine_tune_turnout_minus)
-    turnout_data.dialog_w.add(33,16,fine_tune)
+    turnout_data.dialog_w.add(38,16,fine_tune)
     turnout_data.fine_tune_label = WLabel(pad_int(90,3),5)
-    turnout_data.dialog_w.add(39,16,turnout_data.fine_tune_label)
+    turnout_data.dialog_w.add(44,16,turnout_data.fine_tune_label)
     fine_tune = WButton(5,">")
     fine_tune.on("click",fine_tune_turnout_plus)
-    turnout_data.dialog_w.add(45,16,fine_tune)
+    turnout_data.dialog_w.add(50,16,fine_tune)
     fine_tune = WButton(5,">>")
     fine_tune.on("click",fine_tune_turnout_PLUS)
-    turnout_data.dialog_w.add(51,16,fine_tune)
+    turnout_data.dialog_w.add(56,16,fine_tune)
     next_dialog = None
     turnout_data.dialog_w.loop()
     

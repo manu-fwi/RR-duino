@@ -1116,12 +1116,30 @@ bool check_turnout_fine_cmd_2nd_stage()
     return true;
   }
   if ((command_buf[3]>=10) && (command_buf[3]<=170)) { // reasonable values
-    if ((turn->status & 0x1F!=0) &&(turn->status & 0x1F!=NO_SERVO)) // Check if it was attached to a servo
+    DEBUG("FINE TUNE pin=");
+    DEBUGLN(turn->servo_pin);
+    if ((turn->status & 0x1F!=0) &&(turn->status & 0x1F!=NO_SERVO)) // Check if it was attached to a "normal" servo
       servos[turn->status & 0x1F].detach();
     if (turn->status & 0x1F!=0) { // It was not already doing fine tuning so attach it to servos[0]
-      turn->status &= 0xE0;   // Means: reserved for fine tuning
+      DEBUG("NOT ALREADY FINE TUNING ");
       servos[0].detach();
+      // Find the servo which was doing fine tuning
+      for (turnout_cfg_t * find_turn=turnout_cfg_head;find_turn;find_turn=find_turn->next) {
+        DEBUGLN(find_turn->status);
+        if ((find_turn->status&0x1F)==0) {
+          // Tell the turnout he is not attached to a servo anymore
+          find_turn->status=(find_turn->status & 0xE0)+NO_SERVO;
+          DEBUG("FOUND");
+          DEBUGLN(find_turn->servo_pin);
+          DEBUGLN(find_turn->status);
+          break;
+        }
+        DEBUGLN(find_turn->servo_pin);
+      }
       servos[0].attach(turn->servo_pin);
+      turn->status &= 0xE0;   // Means: reserved for fine tuning
+      DEBUG("TURNOUT FINE TUNING SERVO IS ON PIN");
+      DEBUGLN(turn->servo_pin);
     }
     servos[0].write(command_buf[3]); //set position
   } else if ((command_buf[3]==0) && (turn->status & 0x1F==0) ) // pos=0 means detach servo
