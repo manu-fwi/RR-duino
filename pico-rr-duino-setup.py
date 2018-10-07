@@ -10,19 +10,26 @@ TURNOUT_TUNE_TIMEOUT = 5
 
 def set_status(status):    
     main_data.device_status.t=status
+    main_data.status = status
     main_data.device_status.redraw()
 
-def set_eeprom_status(eeprom_status):
-    
-    if not main_data.eeprom_state[0]:
+def eeprom_status_str():
+    if main_data.eeprom_state[0] is None:
+        result = "Unknown"
+    elif not main_data.eeprom_state[0]:
         result = "Not loaded"
     else:
         result = "Loaded"
-    if not main_data.eeprom_state[1]:
+    if main_data.eeprom_state[1] is None:
+        result +=" / Unknown"
+    elif not main_data.eeprom_state[1]:
         result+=" / Not storing"
     else:
         result+=" / Storing"
-    eeprom_status.t=result
+    return result
+
+def set_eeprom_status(eeprom_status):
+    eeprom_status.t=eeprom_status_str()
     
 def wait_for_answer(min_length):
     m=b""
@@ -88,6 +95,7 @@ def get_address():
     if new_address!=address:
         address = new_address
         set_status("Unknown state")
+        main_data.status = None
         main_data.eeprom_state=[None,None]
         set_eeprom_status(main_data.eeprom_status)
         main_data.eeprom_status.redraw()
@@ -125,8 +133,9 @@ def get_version():
     s.send(bytes((0xFF,0b10001001,address)))
     answer,msg = wait_for_answer(3)
     if answer is not None:
-        main_data.device_version.t=str(answer[0])
-        main_data.device_version.redraw()
+        main_data.device_version_label.t=str(answer[0])
+        main_data.device_version = main_data.device_version_label.t
+        main_data.device_version_label.redraw()
     return msg
 
 def async_events(cmd):
@@ -247,11 +256,12 @@ def sensor_clicked(b):
 class MainDialogData:
     def __init__(self):
         self.device_status = self.eeprom_status = None
-        self.device_version = self.address_entry = self.port_entry = self.baudrate_entry = None
-        self.connect_state = False
+        self.device_version_label = self.address_entry = self.port_entry = self.baudrate_entry = None
+        self.connect_state = None
         self.connect_button = None
         self.dialog_w = None
-        self.eeprom_state = [False,False]
+        self.eeprom_state = [None,None]
+        self.device_version = self.status= None
 
         
 def main_dialog():
@@ -271,8 +281,13 @@ def main_dialog():
     main_data.dialog_w.add(2, 3, "Speed:")
     main_data.baudrate_entry = WTextEntry(20, str(serial_speed))
     main_data.dialog_w.add(11, 3,main_data.baudrate_entry)
-    main_data.connect_button = WButton(12,"Connect")
-    main_data.connect_state = False #begin disconnected
+    s = "Connect"
+    if main_data.connect_state is None:
+        main_data.connect_state = False #begin disconnected
+    elif main_data.connect_state:
+        s="Disconnect"
+    main_data.connect_button = WButton(12,s)
+
     main_data.connect_button.on("click",connect_clicked)
     main_data.dialog_w.add(11,4,main_data.connect_button)
 
@@ -287,15 +302,23 @@ def main_dialog():
     check_device_button.on("click",check_device_clicked)
     main_data.dialog_w.add(51,3,check_device_button)
     main_data.dialog_w.add(37,4,"Version:")
-    main_data.device_version = WLabel("Unknown",23)
-    main_data.dialog_w.add(45,4,main_data.device_version)
+    if main_data.device_version is None:
+        s="Unknown"
+    else:
+        s=main_data.device_version
+    main_data.device_version_label = WLabel(s,23)
+    main_data.dialog_w.add(45,4,main_data.device_version_label)
     
     main_data.dialog_w.add(1,6,WFrame(63,4,"Device setup"))
 
     main_data.dialog_w.add(2,7,"Status:")
+    if main_data.status is None:
+        s = "Unknown"
+    else:
+        s=main_data.status
     main_data.device_status = WLabel("Unknown state",26)
     main_data.dialog_w.add(10,7,main_data.device_status)
-    main_data.eeprom_status = WLabel("Not loaded / Not storing",25)
+    main_data.eeprom_status = WLabel(eeprom_status_str(),25)
     main_data.dialog_w.add(37,7,main_data.eeprom_status)
     load_eeprom_button = WButton(15,"Load EEPROM")
     load_eeprom_button.on("click",load_eeprom_clicked)
