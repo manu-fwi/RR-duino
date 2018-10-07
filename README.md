@@ -26,4 +26,4 @@ Features:
 
 Note for the servo control of a turnout: just set the servo to 90° position before mounting it; mount it on the turnout (no need to set the extreme position, it does not matter if the turnout is not straight or thrown). Then use the fine tuning command to find the precise positions for straight/thrown, and then config the servo positions accordingly.
 
-NEW: now there is a python script (pico-rr-duino-setup.py) that enables you to setup all your sensors/turnouts via a text user interface (see the wiki page)!
+<b>NEW: now there is a python script (pico-rr-duino-setup.py) that enables you to setup all your sensors/turnouts via a text user interface (see the wiki page)!</b>
