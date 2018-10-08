@@ -316,7 +316,7 @@ def main_dialog():
         s = "Unknown"
     else:
         s=main_data.status
-    main_data.device_status = WLabel("Unknown state",26)
+    main_data.device_status = WLabel(s,26)
     main_data.dialog_w.add(10,7,main_data.device_status)
     main_data.eeprom_status = WLabel(eeprom_status_str(),25)
     main_data.dialog_w.add(37,7,main_data.eeprom_status)
@@ -427,6 +427,25 @@ def sensor_commit_clicked(b):
         sensor_data.list_wg.set_lines(sensor_data.list_wg.items)
         sensor_data.list_wg.redraw()
     sensor_data.device_status.redraw()
+
+def sensor_delete_clicked(b):
+    sensor=sensor_data.list_wg.items[sensor_data.list_wg.choice]
+    subadd = int(sensor[7:9])
+
+    s.send(bytes((0xFF,0b10100001,address,subadd)))
+    m,code = wait_for_answer(3)
+    if m is None:
+        #error
+        sensor_data.device_status.t = code
+    else:
+        #no error
+        sensor_data.device_status.t = m
+        #reload the list
+        load_sensors()
+        sensor_data.list_wg.items = sensor_data.sensors_list
+        sensor_data.list_wg.set_lines(sensor_data.list_wg.items)
+        sensor_data.list_wg.redraw()
+    sensor_data.device_status.redraw()
     
 def sensor_dialog():
     global sensor_data
@@ -463,6 +482,9 @@ def sensor_dialog():
     sensor_data.list_wg=WListBox(28,6,sensor_data.sensors_list)
     sensor_data.dialog_w.add(26,4,WFrame(30,8,"Sensors"))
     sensor_data.dialog_w.add(27,5,sensor_data.list_wg)
+    button = WButton(28,"Delete sensor")
+    button.on("click",sensor_delete_clicked)
+    sensor_data.dialog_w.add(27,12,button)
 
     sensor_data.dialog_w.loop()
     next_dialog = None
@@ -652,13 +674,25 @@ def fine_tune_turnout(pos):
         return True
     return False
 
-def adjust_fine_tune_pos(w):
-    turn = w.items[w.choice]
-    turnout_data.fine_tune_pos = (int(turn[15:18])+int(turn[21:24]))//2
-    turnout_data.fine_tune_label.t = pad_int(turnout_data.fine_tune_pos,3)
-    turnout_data.fine_tune_label.redraw()
-    print("changed")
+def turnout_delete_clicked(b):
+    turnout=turnout_data.list_wg.items[turnout_data.list_wg.choice]
+    subadd = int(turnout[4:6])
     
+    s.send(bytes((0xFF,0b10110001,address,subadd)))
+    m,code = wait_for_answer(3)
+    if m is None:
+        #error
+        turnout_data.device_status.t = code
+    else:
+        #no error
+        turnout_data.device_status.t = m
+        #reload the list
+        load_turnouts()
+        turnout_data.list_wg.items = turnout_data.turnouts_list
+        turnout_data.list_wg.set_lines(turnout_data.list_wg.items)
+        turnout_data.list_wg.redraw()
+    turnout_data.device_status.redraw()   
+
 def turnout_dialog():
     global turnout_data
 
@@ -709,22 +743,25 @@ def turnout_dialog():
     turnout_data.list_wg=WListBox(40,10,turnout_data.turnouts_list)
     turnout_data.dialog_w.add(26,4,WFrame(42,12,"Turnouts"))
     turnout_data.dialog_w.add(27,5,turnout_data.list_wg)
-    turnout_data.list_wg.on("changed",adjust_fine_tune_pos)
-
+    button = WButton(40,"Delete turnout")
+    button.on("click",turnout_delete_clicked)
+    turnout_data.dialog_w.add(27,16,button)
+    
+    turnout_data.dialog_w.add(26,17,WFrame(42,3,"Fine tune turnout"))
     fine_tune = WButton(5,"<<")
     fine_tune.on("click",fine_tune_turnout_MINUS)
-    turnout_data.dialog_w.add(32,16,fine_tune)
+    turnout_data.dialog_w.add(32,18,fine_tune)
     fine_tune = WButton(5,"<")
     fine_tune.on("click",fine_tune_turnout_minus)
-    turnout_data.dialog_w.add(38,16,fine_tune)
+    turnout_data.dialog_w.add(38,18,fine_tune)
     turnout_data.fine_tune_label = WLabel(pad_int(90,3),5)
-    turnout_data.dialog_w.add(44,16,turnout_data.fine_tune_label)
+    turnout_data.dialog_w.add(44,18,turnout_data.fine_tune_label)
     fine_tune = WButton(5,">")
     fine_tune.on("click",fine_tune_turnout_plus)
-    turnout_data.dialog_w.add(50,16,fine_tune)
+    turnout_data.dialog_w.add(49,18,fine_tune)
     fine_tune = WButton(5,">>")
     fine_tune.on("click",fine_tune_turnout_PLUS)
-    turnout_data.dialog_w.add(56,16,fine_tune)
+    turnout_data.dialog_w.add(56,18,fine_tune)
     next_dialog = None
     turnout_data.dialog_w.loop()
     
