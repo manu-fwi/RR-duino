@@ -673,6 +673,11 @@ def fine_tune_turnout(pos):
         turnout_data.fine_tune_label.redraw()
         return True
     return False
+def adjust_fine_tune_pos(w):
+    turn = w.items[w.choice]
+    turnout_data.fine_tune_pos = (int(turn[15:18])+int(turn[21:24]))//2
+    turnout_data.fine_tune_label.t = pad_int(turnout_data.fine_tune_pos,3)
+    turnout_data.fine_tune_label.redraw()
 
 def turnout_delete_clicked(b):
     turnout=turnout_data.list_wg.items[turnout_data.list_wg.choice]
@@ -743,6 +748,7 @@ def turnout_dialog():
     turnout_data.list_wg=WListBox(40,10,turnout_data.turnouts_list)
     turnout_data.dialog_w.add(26,4,WFrame(42,12,"Turnouts"))
     turnout_data.dialog_w.add(27,5,turnout_data.list_wg)
+    turnout_data.list_wg.on("changed",adjust_fine_tune_pos)
     button = WButton(40,"Delete turnout")
     button.on("click",turnout_delete_clicked)
     turnout_data.dialog_w.add(27,16,button)
