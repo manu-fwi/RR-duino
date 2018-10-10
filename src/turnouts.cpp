@@ -181,6 +181,9 @@ turnout_cfg_t * read_cfg_turn(int ee_add)  // read cfg_turnout_t struct in eepro
   if (!cfg)
     return NULL;
   cfg->subadd = EEPROM.read(ee_add++);
+  if (cfg->subadd == EE_FREE_TURN)
+  // This turnout has been deleted
+    return cfg;
   byte servo_pin = EEPROM.read(ee_add++);
   cfg->servo_pin = servo_pin & 0x7F;
   cfg->straight_pos = EEPROM.read(ee_add++);

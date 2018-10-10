@@ -513,8 +513,8 @@ class TurnoutDialogData:
 def config_turnout(subadd,servo_pin,straight_pos,thrown_pos,pulse_pins,relay_pins):
     if len(relay_pins)>0 and (relay_pins[0]!=254 or relay_pins[1]!=254):
         subadd |= 1 << 6
-        for i in range(2):
-            if pulse_pins:
+        if pulse_pins:
+            for i in range(2):
                 relay_pins[i]|=0x80
         s.send(bytes((0xFF,0b10010001,address,subadd,servo_pin,straight_pos,thrown_pos,relay_pins[0],relay_pins[1])))
     else:
@@ -555,6 +555,7 @@ def turnout_commit_clicked(b):
         return
 
     pulse_pins= turnout_data.pulse_relay_pins.choice
+    print(pulse_pins)
     relay_pins = []
     for i in range(2):
         s = turnout_data.relay_pins_entry[i].get()
@@ -613,6 +614,7 @@ def get_turnouts_cfg(msg):
             pulse = (msg[pos]&0x80)!=0
             pos+=1
             pin2=msg[pos] & 0x7F
+            pulse = pulse or (msg[pos]&0x80)!=0
             s+="|r1:"+relay_pin_str(pin1)+"|r2:"+relay_pin_str(pin2)+"|"
             if pulse:
                 s+="P"
@@ -674,6 +676,8 @@ def fine_tune_turnout(pos):
         return True
     return False
 def adjust_fine_tune_pos(w):
+    if w.choice>=len(w.items):
+        return
     turn = w.items[w.choice]
     turnout_data.fine_tune_pos = (int(turn[15:18])+int(turn[21:24]))//2
     turnout_data.fine_tune_label.t = pad_int(turnout_data.fine_tune_pos,3)

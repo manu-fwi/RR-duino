@@ -76,6 +76,11 @@ sensor_cfg_t * read_cfg_sensor(int ee_add)  // read sensor_cfg_t struct in eepro
   if (!cfg)
     return NULL;
   byte subadd = EEPROM.read(ee_add++);
+  if (subadd==EE_FREE_SENSOR) {
+  // Non sensor here it has been deleted
+    cfg->subadd = EE_FREE_SENSOR;
+    return cfg;
+  }
   cfg->subadd = subadd & 0x3F;
   byte pin = EEPROM.read(ee_add++);
   cfg->sensor_pin = pin & 0x7F;

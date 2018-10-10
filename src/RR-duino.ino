@@ -110,21 +110,23 @@ bool load_turnouts()
     } else {
       turnout_cfg_t * turn = read_cfg_turn(ee_add);
       if (turn) {
-        // Add turnout so that the list of turnouts is sorted in ascending order with respect to subaddress
-        turnout_cfg_t * place = find_last_turn_before(turn->subadd);
-        if (place) {
-          turn->next = place->next;
-          place->next = turn;
-        } else {
-          turn->next = turnout_cfg_head;
-          turnout_cfg_head = turn;
-        }
-        if (turn->next && (turn->next->subadd == turn->subadd)) { // delete an existing turnout with the same subaddress
-          turnout_cfg_t * temp = turn->next;
-          turn->next = turn->next->next;
-          delete temp;
-        }
-        config_pins_turnout(turn);
+          if (turn->subadd != EE_FREE_TURN) {
+          // Add turnout so that the list of turnouts is sorted in ascending order with respect to subaddress
+          turnout_cfg_t * place = find_last_turn_before(turn->subadd);
+          if (place) {
+            turn->next = place->next;
+            place->next = turn;
+          } else {
+            turn->next = turnout_cfg_head;
+            turnout_cfg_head = turn;
+          }
+          if (turn->next && (turn->next->subadd == turn->subadd)) { // delete an existing turnout with the same subaddress
+            turnout_cfg_t * temp = turn->next;
+            turn->next = turn->next->next;
+            delete temp;
+          }
+          config_pins_turnout(turn);
+        } else delete turn;
       } else return false;
     }
     ee_add+=CFG_TURN_COMB_SIZE;
@@ -151,21 +153,23 @@ bool load_sensors()
     DEBUGLN(first);
     sensor_cfg_t * sensor = read_cfg_sensor(ee_add);
     if (sensor) {
-      // Add sensor so that the list of sensors is sorted in ascending order with respect to subaddress
-      sensor_cfg_t * place = find_last_sensor_before(sensor->subadd);
-      if (place) {
-        sensor->next = place->next;
-        place->next = sensor;
-      } else {
-        sensor->next = sensor_cfg_head;
-        sensor_cfg_head = sensor;
-      }
-      if (sensor->next && (sensor->next->subadd == sensor->subadd)) { // delete an existing sensor with the same subaddress
-        sensor_cfg_t * temp = sensor->next;
-        sensor->next = sensor->next->next;
-        delete temp;
-      }
-      config_pins_sensor(sensor);
+      if (sensor->subadd != EE_FREE_SENSOR) { // check if this sensor is not a "deleted" sensor
+        // Add sensor so that the list of sensors is sorted in ascending order with respect to subaddress
+        sensor_cfg_t * place = find_last_sensor_before(sensor->subadd);
+        if (place) {
+          sensor->next = place->next;
+          place->next = sensor;
+        } else {
+          sensor->next = sensor_cfg_head;
+          sensor_cfg_head = sensor;
+        }
+        if (sensor->next && (sensor->next->subadd == sensor->subadd)) { // delete an existing sensor with the same subaddress
+          sensor_cfg_t * temp = sensor->next;
+          sensor->next = sensor->next->next;
+          delete temp;
+        }
+        config_pins_sensor(sensor);
+      } else delete sensor;
     } else return false;
     ee_add-=CFG_SENSOR_SIZE;
     first = EEPROM.read(ee_add);
@@ -766,7 +770,7 @@ int config_one_turnout(byte pos)
       return -MEMORY_FULL;
     }
     cfg->subadd = subadd;
-    cfg->servo_pin = command_buf[pos+1] & 0x7F;  // For now all relays are pulsed (latching relays)
+    cfg->servo_pin = command_buf[pos+1] & 0x7F;
     cfg->straight_pos = command_buf[pos+2];
     cfg->thrown_pos = command_buf[pos+3];
     if (command_buf[pos] & (1<<SUB_RELAY_PIN_BV)) { // relay pins present
