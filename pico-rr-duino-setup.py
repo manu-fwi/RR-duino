@@ -5,7 +5,7 @@ from picotui.widgets import *
 from picotui.defs import *
 
 
-ANSWER_TIMEOUT = 0.5
+ANSWER_TIMEOUT = 5
 TURNOUT_TUNE_TIMEOUT = 5
 
 def set_status(status):    
@@ -145,13 +145,6 @@ def async_events(cmd):
         c = 0b00000101
         s.send(bytes((0xFF,c,add)))
 
-def show(cmd):
-    add = check_add(cmd[1])
-    if add is not None:
-        c= 0b11001001
-        if cmd[2]=="T":
-            c|= (1 << 4)
-        s.send(bytes((0xFF,c,add)))
 
 def read_cmd(cmd):
     add = check_add(cmd[1])
@@ -203,17 +196,28 @@ class DialogNew(Dialog):
         pass
 
 def connect_clicked(b):
+    global serial_port,serial_speed
     if main_data.connect_state:  #was connected
         main_data.connect_button.t="Connect"
         s.stop()
         connect_state = False
     else:
-        #try:
+        serial_port = main_data.port_entry.get()
+        s.set_port(serial_port)
+        try:
+            baud = int(main_data.baudrate_entry.get())
+        except:
+            baud = -1
+        if baud==-1:
+            return
+        serial_speed = baud
+        s.set_baud(serial_speed)
+        try:
             s.start()
             main_data.connect_button.t="Disconnect"
             main_data.connect_state = True
-        #except:
-            pass
+        except:
+            set_status("serial port error")
     main_data.connect_button.redraw()
 
 def check_connection():
@@ -776,7 +780,7 @@ def turnout_dialog():
     turnout_data.dialog_w.loop()
     
 messages=[]
-serial_port = "/dev/ttyUSB1"
+serial_port = "/dev/ttyACM0"
 serial_speed = 19200
 s = serial_bus.serial_bus(serial_port,serial_speed)
 address=0

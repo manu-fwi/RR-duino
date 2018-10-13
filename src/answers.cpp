@@ -19,9 +19,12 @@ void send_answers()
       answers_head->data[0] |= (1 << CMD_ASYNC_BV);
     }
     DEBUGLN(F("SENDING ANSWER"));
+    set_data_dir();
     to_bus.write(0xFF); // Start byte
     for (byte j=0;j<answers_head->len;j++)
       to_bus.write(answers_head->data[j]);
+    to_bus.flush();
+    set_data_dir(false);
     delete answers_head->data;
     answer_t * temp = answers_head;
     answers_head = answers_head->next;
@@ -42,9 +45,12 @@ void send_async_events()
       }
       async_head->data[async_head->len++]=0x80;// we need to add termination to the last
     }
+    set_data_dir();
     to_bus.write(0xFF);
     for (byte j=0;j<async_head->len;j++)
       to_bus.write(async_head->data[j]);
+    to_bus.flush();
+    set_data_dir(false);
     delete async_head->data;
     answer_t * temp = async_head;
     async_head = async_head->next;
@@ -75,10 +81,13 @@ void send_async_events()
             if (sensors_chng_state)
               data[0] |= (1 << CMD_PEND_ANSWERS_BV); // more to come
             data[len++]=0x80;  // Indicates last subaddress
+            set_data_dir();
             to_bus.write(0xFF); // Start byte
             for (byte j=0;j<len;j++) {
               to_bus.write(data[j]);
             }
+            to_bus.flush();
+            set_data_dir(false);
             break; // break, we will go on next time
           }
         }
@@ -89,10 +98,13 @@ void send_async_events()
       data[0]= 0b00000100; // nothing to be reported
       data[1]=address | (1<<ADD_LIST_BV);
       data[2]=0x80;
+      set_data_dir();
       to_bus.write(0xFF); // Start byte
       for (byte j=0;j<3;j++) {
         to_bus.write(data[j]);
       }
+      to_bus.flush();
+      set_data_dir(false);
     }
     delete data;    
   }

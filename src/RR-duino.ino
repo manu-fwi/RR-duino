@@ -7,6 +7,7 @@
 
 // *************** globals *******************
 HardwareSerial& to_bus = Serial1;
+byte data_dir_pin = 3; // 255 to disable for normal Serial port
 bool save_cfg_to_eeprom = false;
 
 // Pool of servos top be used
@@ -215,11 +216,15 @@ void setup() {
   
   //clear_eeprom(false);
 #ifdef DEBUG
-   Serial.begin(115200);
+  Serial.begin(19200);
   while(!Serial);
-#endif // DEBUG
+#endif //DEBUG
   DEBUGLN("Started");
   to_bus.begin(19200);
+  if (data_dir_pin!=255) {
+    pinMode(data_dir_pin,OUTPUT);
+    digitalWrite(data_dir_pin,LOW);
+  }
   delay(1000);
   address = EEPROM.read(0);
   if (address==255) { // When eeprom has not been set it reads 255
@@ -253,7 +258,19 @@ byte cmd_pos = 0;
 bool new_command = false;
 byte command_buf[MAX_CMD_LEN];
 
-void send_simple_answer(byte err) {
+void set_data_dir(bool write=true)
+{
+  if (data_dir_pin!=255) {
+    if (write)
+      digitalWrite(data_dir_pin,HIGH);
+    else
+      digitalWrite(data_dir_pin,LOW);
+  }
+}
+
+void send_simple_answer(byte err)
+{
+  set_data_dir();
   to_bus.write(0xFF);
   command_buf[0]&=~(1<<CMD_CMD_ANSWER_BV); // Unset command bit
   command_buf[2]=0x80 | err;  // add error code
@@ -264,6 +281,8 @@ void send_simple_answer(byte err) {
 
   for (byte i=0;i<3;i++)
     to_bus.write(command_buf[i]);
+  to_bus.flush();
+  set_data_dir(false);
 }
 
 int write_one_turnout(byte subadd)
@@ -1100,9 +1119,15 @@ void send_one_msg(byte * msg,byte len)
 {
   if ((sensors_chng_state>0) || async_head)
     msg[0] |=  (1<<CMD_ASYNC_BV);  // Set pending async events
+  set_data_dir();
   to_bus.write(0xFF); // Start byte
-  for (byte i=0;i<len;i++)
+  for (byte i=0;i<len;i++) {
     to_bus.write(msg[i]);
+    DEBUG(msg[i]);
+    DEBUG("*");
+  }
+  to_bus.flush();
+  set_data_dir(false);
 }
 
 long unsigned last_run = 0;
@@ -1313,6 +1338,8 @@ void save_config()
   // Turnouts first
   turnout_cfg_t * turn = turnout_cfg_head;
   DEBUGLN(F("saveconfig, turnouts first"));
+  // First the address
+  EEPROM.update(0,address);
   while (turn)
   {
     if ((turn->status & (1<<TURNOUT_SYNC_BV))==0) {
@@ -1466,7 +1493,7 @@ void loop() {
       if (cmd_pos<MAX_CMD_LEN) {
         command_buf[cmd_pos++] = c; // add new byte to the current command
         DEBUG(c);
-        DEBUG(" ");
+        DEBUG("/");
         if ((*check_cmd)()) // check if command complete and calls the corresponding function
           new_command = false;  // wait for next START BYTE
       } else new_command = false; // buffer full without a valid command, start over

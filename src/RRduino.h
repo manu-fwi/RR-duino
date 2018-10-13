@@ -4,6 +4,7 @@
 #include "Arduino.h"
 
 extern HardwareSerial& to_bus;
+extern byte data_dir_pin;  // Dir pin, 255 means normal serial
 extern byte address;
 extern bool save_cfg_to_eeprom;
 
@@ -49,6 +50,7 @@ extern bool save_cfg_to_eeprom;
 #define ADDRESS_MODE_PIN 2
 
 void noop();
+void set_data_dir(bool write=true);
 // DEBUG MACRO
 #define DEBUG(msg) Serial.print(msg)
 #define DEBUGLN(msg) Serial.println(msg)
