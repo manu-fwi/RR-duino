@@ -52,8 +52,8 @@ extern bool save_cfg_to_eeprom;
 void noop();
 void set_data_dir(bool write=true);
 // DEBUG MACRO
-#define DEBUG(msg) Serial.print(msg)
-#define DEBUGLN(msg) Serial.println(msg)
-//#define DEBUG(msg) noop()
-//#define DEBUGLN(msg) noop()
+//#define DEBUG(msg) Serial.print(msg)
+//#define DEBUGLN(msg) Serial.println(msg)
+#define DEBUG(msg) noop()
+#define DEBUGLN(msg) noop()
 #endif // RRDUINO_H

@@ -6,7 +6,7 @@
 #include <Servo.h>
 
 // *************** globals *******************
-HardwareSerial& to_bus = Serial1;
+HardwareSerial& to_bus = Serial;
 byte data_dir_pin = 3; // 255 to disable for normal Serial port
 bool save_cfg_to_eeprom = false;
 
@@ -19,18 +19,17 @@ bool address_mode = false;
 byte address;               // This holds the address of this slave
 
 // Timer2 init counter and secondary counter
-// 256-96 = 160 ticks to overflow
+// 160 ticks
 // The timer freq with 1024 prescaler is roughly 16000
-// So the overflow feq is 100Hz, just need to divide by 2 to get the 50Hz
+// So the INT freq is 100Hz, just need to divide by 2 to get the 50Hz
 
-const byte TCNT2Init = 96;
+const byte OCR2Avalue = 160; // match value (CTC mode)
 volatile byte timer2=0;
 
 //********* ISR for the pin pulses (relay pins) ********
 
-ISR(TIMER2_OVF_vect)
+ISR(TIMER2_COMPA_vect)
 {
-  TCNT2 = TCNT2Init;
   timer2++;
   if (timer2==2) {
     // Begin or finish a pulse (depending on current state):
@@ -203,24 +202,17 @@ void setup() {
   
   // Timer2 setting
   TCCR2B = 0x00; // No clock source (Timer/Counter stopped) 
-  TCNT2 = TCNT2Init; // Register : the Timer/Counter (TCNT2) and Output Compare Register (OCR2A and OCR2B) are 8-bit
-                    // Reset Timer Count
- 
-  TCCR2A = 0x00; // TCCR2A - Timer/Counter Control Register A
-                 // All bits to zero -> Normal operation
+  TCCR2A = 0b00000010; // TCCR2A - Timer/Counter Control Register A - CTC mode
+  OCR2A= OCR2Avalue;  // Compare value
  
   TCCR2B |= (1<<CS22)|(1<<CS21) | (1<<CS20); // Prescale 1024 (Timer/Counter started)
    
-  TIMSK2 |= (1<<TOIE2); // TIMSK2 - Timer/Counter2 Interrupt Mask Register
-  // Bit 0 - TOIE2: Timer/Counter2 Overflow Interrupt Enable
+  TIMSK2 |= (1<<OCIE2A); // Compare match interrupt enabled
   
   //clear_eeprom(false);
-#ifdef DEBUG
-  Serial.begin(19200);
-  while(!Serial);
-#endif //DEBUG
+
   DEBUGLN("Started");
-  to_bus.begin(19200);
+  to_bus.begin(38400);
   if (data_dir_pin!=255) {
     pinMode(data_dir_pin,OUTPUT);
     digitalWrite(data_dir_pin,LOW);
