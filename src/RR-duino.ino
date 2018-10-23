@@ -23,15 +23,22 @@ byte address;               // This holds the address of this slave
 // The timer freq with 1024 prescaler is roughly 16000
 // So the INT freq is 100Hz, just need to divide by 2 to get the 50Hz
 
-const byte OCR2Avalue = 160; // match value (CTC mode)
+#ifdef USE_TIMER2
 volatile byte timer2=0;
-
+#endif
+unsigned long d=0,t = 0;
 //********* ISR for the pin pulses (relay pins) ********
 
-ISR(TIMER2_COMPA_vect)
+ISR(TIMER_ISR)
 {
+#ifdef USE_TIMER2
   timer2++;
-  if (timer2==2) {
+  if (timer2==2)
+#endif
+  {
+    t= micros()-d;
+    d = micros();
+    
     // Begin or finish a pulse (depending on current state):
     //   if HIGH, pulse should be ended and pin is discarded
     //   if LOW, pulse must begin
@@ -46,7 +53,9 @@ ISR(TIMER2_COMPA_vect)
         }
       }
     }
+#ifdef USE_TIMER2
     timer2 = 0;
+#endif
   }
 }
 
@@ -201,16 +210,11 @@ void setup() {
   interrupts();
   
   // Timer2 setting
-  TCCR2B = 0x00; // No clock source (Timer/Counter stopped) 
-  TCCR2A = 0b00000010; // TCCR2A - Timer/Counter Control Register A - CTC mode
-  OCR2A= OCR2Avalue;  // Compare value
- 
-  TCCR2B |= (1<<CS22)|(1<<CS21) | (1<<CS20); // Prescale 1024 (Timer/Counter started)
-   
-  TIMSK2 |= (1<<OCIE2A); // Compare match interrupt enabled
-  
+  INIT_TIMER();
   //clear_eeprom(false);
-
+  #ifdef USE_DEBUG
+  Serial.begin(115200);
+  #endif
   DEBUGLN("Started");
   to_bus.begin(38400);
   if (data_dir_pin!=255) {
@@ -228,6 +232,8 @@ void setup() {
     EEPROM.write(2,0);
     EEPROM.write(EEPROM.length()-CFG_SENSOR_SIZE,0);
   } else version_nb = EEPROM.read(1);
+  if (version_nb=255)
+    version_nb=0;;
   if (address==0) {
     eeprom_turn_end = 2;
     return;
@@ -1490,5 +1496,12 @@ void loop() {
           new_command = false;  // wait for next START BYTE
       } else new_command = false; // buffer full without a valid command, start over
     }
+  }
+  noInterrupts();
+  unsigned long t1=t;
+  interrupts();
+  if (t1>25000) {
+    DEBUG("ISR TOO SLOW:");
+    DEBUGLN(t1);
   }
 }

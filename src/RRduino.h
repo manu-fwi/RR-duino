@@ -54,6 +54,43 @@ void set_data_dir(bool write=true);
 // DEBUG MACRO
 //#define DEBUG(msg) Serial.print(msg)
 //#define DEBUGLN(msg) Serial.println(msg)
+//#define USE_DEBUG
 #define DEBUG(msg) noop()
 #define DEBUGLN(msg) noop()
+#undef USE_DEBUG
+
+// Timer defines
+#if defined(__AVR_ATmega32U4__)
+//Use timer 4 for this one (Leonardo)
+#define USE_TIMER4
+
+#define TIMER_ISR TIMER4_COMPA_vect
+
+#define INIT_TIMER() ({\
+  TCCR4B = 0x00;\
+  TCCR4A = TCCR4C= TCCR4D = 0;\
+  TCCR4B = (1<<CS43) | (1<<CS42)|(1<<CS41) | (1<<CS40);\
+  TIMSK4 |= (1<<OCIE4A);\
+  noInterrupts();\
+  TC4H = 0;\
+  OCR4C= 9;\
+  interrupts();\
+  })
+
+#else
+// Use timer 2 for others (Uno, Mega)
+#define USE_TIMER2
+
+#define TIMER_ISR TIMER2_COMPA_vect
+
+
+#define INIT_TIMER() ({\
+  TCCR2B = 0x00;\
+  TCCR2A = 0b00000010;\
+  TCCR2B |= (1<<CS22)|(1<<CS21) | (1<<CS20);\
+  TIMSK2 |= (1<<OCIE2A);\
+  OCR2A= 160;\
+})
+#endif __AVR_ATmega32u4
+
 #endif // RRDUINO_H
