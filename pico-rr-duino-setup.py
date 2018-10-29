@@ -664,6 +664,8 @@ def fine_tune_turnout_MINUS(b):
     fine_tune_turnout_diff(-5)
     
 def fine_tune_turnout(pos):
+    if turnout_data.list_wg.choice not in turnout_data.list_wg.items:
+        return
     turnout_data.fine_tune_time = time.time()
     turnout_str = turnout_data.list_wg.items[turnout_data.list_wg.choice]
     subadd=int(turnout_str[4:6])
@@ -684,6 +686,8 @@ def adjust_fine_tune_pos(w):
     turnout_data.fine_tune_label.redraw()
 
 def turnout_delete_clicked(b):
+    if turnout_data.list_wg.choice not in turnout_data.list_wg.items:
+        return
     turnout=turnout_data.list_wg.items[turnout_data.list_wg.choice]
     subadd = int(turnout[4:6])
     
@@ -702,7 +706,9 @@ def turnout_delete_clicked(b):
         turnout_data.list_wg.redraw()
     turnout_data.device_status.redraw()   
 
-def get_turnout(b):    
+def get_turnout(b):
+    if turnout_data.list_wg.choice not in turnout_data.list_wg.items:
+        return
     turn=turnout_data.list_wg.items[turnout_data.list_wg.choice]
     #fill all fields from the choice
     turnout_data.subadd_entry.set(turn[4:6].lstrip())
@@ -799,10 +805,10 @@ def turnout_dialog():
     turnout_data.dialog_w.add(56,18,fine_tune)
     fine_tune = WButton(13,"Get turnout")
     fine_tune.on("click",get_turnout)
-    turnout_data.dialog_w.add(28,20,fine_tune)
-    fine_tune = WButton(12,"As straight")
+    turnout_data.dialog_w.add(27,20,fine_tune)
+    fine_tune = WButton(13,"As straight")
     fine_tune.on("click",get_straight_pos)
-    turnout_data.dialog_w.add(42,20,fine_tune)
+    turnout_data.dialog_w.add(41,20,fine_tune)
     fine_tune = WButton(12,"As thrown")
     fine_tune.on("click",get_thrown_pos)
     turnout_data.dialog_w.add(55,20,fine_tune)
