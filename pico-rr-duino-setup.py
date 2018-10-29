@@ -664,7 +664,7 @@ def fine_tune_turnout_MINUS(b):
     fine_tune_turnout_diff(-5)
     
 def fine_tune_turnout(pos):
-    if turnout_data.list_wg.choice not in turnout_data.list_wg.items:
+    if turnout_data.list_wg.choice>=len(turnout_data.list_wg.items):
         return
     turnout_data.fine_tune_time = time.time()
     turnout_str = turnout_data.list_wg.items[turnout_data.list_wg.choice]
@@ -686,7 +686,7 @@ def adjust_fine_tune_pos(w):
     turnout_data.fine_tune_label.redraw()
 
 def turnout_delete_clicked(b):
-    if turnout_data.list_wg.choice not in turnout_data.list_wg.items:
+    if turnout_data.list_wg.choice>=len(turnout_data.list_wg.items):
         return
     turnout=turnout_data.list_wg.items[turnout_data.list_wg.choice]
     subadd = int(turnout[4:6])
@@ -707,7 +707,7 @@ def turnout_delete_clicked(b):
     turnout_data.device_status.redraw()   
 
 def get_turnout(b):
-    if turnout_data.list_wg.choice not in turnout_data.list_wg.items:
+    if turnout_data.list_wg.choice>=len(turnout_data.list_wg.items):
         return
     turn=turnout_data.list_wg.items[turnout_data.list_wg.choice]
     #fill all fields from the choice
