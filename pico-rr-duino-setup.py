@@ -149,7 +149,6 @@ def async_events(cmd):
 def read_cmd(cmd):
     add = check_add(cmd[1])
     if add is not None:
-        print("cmd[2]=",cmd[2])
         c = 0b00000001
         if cmd[2]=='A':
             subadd = None
@@ -559,7 +558,6 @@ def turnout_commit_clicked(b):
         return
 
     pulse_pins= turnout_data.pulse_relay_pins.choice
-    print(pulse_pins)
     relay_pins = []
     for i in range(2):
         s = turnout_data.relay_pins_entry[i].get()
@@ -575,8 +573,6 @@ def turnout_commit_clicked(b):
                 return
             if relay_pins[i]<=0 or relay_pins[i]>126:
                 return
-            if pulse_pins:
-                relay_pins[i]|=0x80
                 
     config_turnout(subadd,servo_pin,straight_pos,thrown_pos,pulse_pins,relay_pins)
     m,code = wait_for_answer(3)
@@ -706,6 +702,31 @@ def turnout_delete_clicked(b):
         turnout_data.list_wg.redraw()
     turnout_data.device_status.redraw()   
 
+def get_turnout(b):    
+    turn=turnout_data.list_wg.items[turnout_data.list_wg.choice]
+    #fill all fields from the choice
+    turnout_data.subadd_entry.set(turn[4:6].lstrip())
+    turnout_data.subadd_entry.redraw()
+    turnout_data.servo_pin_entry.set(turn[9:12].lstrip())
+    turnout_data.servo_pin_entry.redraw()
+    turnout_data.straight_pos_entry.set(turn[15:18].lstrip())
+    turnout_data.straight_pos_entry.redraw()
+    turnout_data.thrown_pos_entry.set(turn[21:24].lstrip())
+    turnout_data.thrown_pos_entry.redraw()
+    for i in range(2):
+        turnout_data.relay_pins_entry[i].set(turn[28+7*i:31+7*i].lstrip())
+        turnout_data.relay_pins_entry[i].redraw()
+    turnout_data.pulse_relay_pins.choice = (turn[-1]=="P")
+    turnout_data.pulse_relay_pins.redraw()
+
+def get_straight_pos(b):
+    turnout_data.straight_pos_entry.set(turnout_data.fine_tune_label.t.lstrip())
+    turnout_data.straight_pos_entry.redraw()
+
+def get_thrown_pos(b):
+    turnout_data.thrown_pos_entry.set(turnout_data.fine_tune_label.t.lstrip())
+    turnout_data.thrown_pos_entry.redraw()
+    
 def turnout_dialog():
     global turnout_data
 
@@ -754,7 +775,7 @@ def turnout_dialog():
     load_turnouts()
 
     turnout_data.list_wg=WListBox(40,10,turnout_data.turnouts_list)
-    turnout_data.dialog_w.add(26,4,WFrame(42,12,"Turnouts"))
+    turnout_data.dialog_w.add(26,4,WFrame(42,13,"Turnouts"))
     turnout_data.dialog_w.add(27,5,turnout_data.list_wg)
     turnout_data.list_wg.on("changed",adjust_fine_tune_pos)
     button = WButton(40,"Delete turnout")
@@ -776,6 +797,15 @@ def turnout_dialog():
     fine_tune = WButton(5,">>")
     fine_tune.on("click",fine_tune_turnout_PLUS)
     turnout_data.dialog_w.add(56,18,fine_tune)
+    fine_tune = WButton(13,"Get turnout")
+    fine_tune.on("click",get_turnout)
+    turnout_data.dialog_w.add(28,20,fine_tune)
+    fine_tune = WButton(12,"As straight")
+    fine_tune.on("click",get_straight_pos)
+    turnout_data.dialog_w.add(42,20,fine_tune)
+    fine_tune = WButton(12,"As thrown")
+    fine_tune.on("click",get_thrown_pos)
+    turnout_data.dialog_w.add(55,20,fine_tune)
     next_dialog = None
     turnout_data.dialog_w.loop()
     
