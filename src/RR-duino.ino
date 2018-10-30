@@ -787,7 +787,7 @@ int config_one_turnout(byte pos)
       return -MEMORY_FULL;
     }
     cfg->subadd = subadd;
-    cfg->servo_pin = command_buf[pos+1] & 0x7F;
+    cfg->servo_pin = command_buf[pos+1];
     cfg->straight_pos = command_buf[pos+2];
     cfg->thrown_pos = command_buf[pos+3];
     if (command_buf[pos] & (1<<SUB_RELAY_PIN_BV)) { // relay pins present
@@ -1015,17 +1015,19 @@ void begin_pin_pulse(turnout_cfg_t * turn)
     pin = turn->relay_pin_1; 
   // Is it a pulsed pin
   if (pin & (1<<PIN_RELAY_PULSE_BV)) {
+    if (pin==0xFE)
+      return;
     noInterrupts();
-    pulse_relay_pins[turn->status & 0x1F]=pin & 0x80;
+    pulse_relay_pins[turn->status & 0x1F]=pin & 0x7F;
     interrupts();
   } else {
     // Non pulse relay so switch one ON the other OFF
     if (first && (turn->relay_pin_2!=0xFE))
-      digitalWrite(turn->relay_pin_2 & 0x80, LOW);
+      digitalWrite(turn->relay_pin_2 & 0x7F, LOW);
     else if (!first && (turn->relay_pin_1!=0xFE))
-      digitalWrite(turn->relay_pin_1 & 0x80, LOW);
+      digitalWrite(turn->relay_pin_1 & 0x7F, LOW);
     if (pin != 0xFE)
-      digitalWrite(pin & 0x80, HIGH);
+      digitalWrite(pin & 0x7F, HIGH);
   }
   
 }
