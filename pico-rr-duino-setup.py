@@ -614,7 +614,7 @@ def get_turnouts_cfg(msg):
             pulse = (msg[pos]&0x80)!=0
             pos+=1
             pin2=msg[pos] & 0x7F
-            pulse = pulse or (msg[pos]&0x80)!=0
+            pulse = pulse or ((msg[pos]&0x80)!=0)
             s+="|r1:"+relay_pin_str(pin1)+"|r2:"+relay_pin_str(pin2)+"|"
             if pulse:
                 s+="P"

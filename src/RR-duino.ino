@@ -679,8 +679,8 @@ byte show_one_turnout(turnout_cfg_t * turn, byte * data)
     DEBUG(F("relay pins! = "));
     DEBUGLN(turn->relay_pin_1);
     DEBUGLN(turn->relay_pin_2);
-    data[4]=turn->relay_pin_1 | (1<<PIN_RELAY_PULSE_BV); // For now only latching relays so pulse
-    data[5]=turn->relay_pin_2 | (1<<PIN_RELAY_PULSE_BV); // For now only latching relays so pulse
+    data[4]=turn->relay_pin_1;
+    data[5]=turn->relay_pin_2;
     return 6;
   }
   return 4;
