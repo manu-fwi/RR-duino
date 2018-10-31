@@ -6,7 +6,7 @@
 #include <Servo.h>
 
 // *************** globals *******************
-HardwareSerial& to_bus = Serial;
+HardwareSerial& to_bus = Serial1;
 byte data_dir_pin = 3; // 255 to disable for normal Serial port
 bool save_cfg_to_eeprom = false;
 
@@ -79,9 +79,9 @@ void config_pins_turnout(turnout_cfg_t * turn)
   pinMode(turn->servo_pin, OUTPUT);
   // Set up relay pin, 0xFE means not used
   if (turn->relay_pin_1!=0xFE)
-    pinMode(turn->relay_pin_1 & 0x80, OUTPUT);
+    pinMode(turn->relay_pin_1 & 0x7F, OUTPUT);
   if (turn->relay_pin_2!=0xFE)
-    pinMode(turn->relay_pin_2 & 0x80, OUTPUT);
+    pinMode(turn->relay_pin_2 & 0x7F, OUTPUT);
 }
 
 // Config pin I/O for a sensor and also set the outputs to their last known state
@@ -1007,6 +1007,7 @@ void begin_pin_pulse(turnout_cfg_t * turn)
 {
   byte pin;
   bool first = true;
+  DEBUGLN("begin pin");
   if (turn->status & (1 << TURNOUT_POS_BV)) {// which position
     pin = turn->relay_pin_2;
     first = false;
@@ -1015,12 +1016,14 @@ void begin_pin_pulse(turnout_cfg_t * turn)
     pin = turn->relay_pin_1; 
   // Is it a pulsed pin
   if (pin & (1<<PIN_RELAY_PULSE_BV)) {
+    DEBUGLN("PULSED!!!");
     if (pin==0xFE)
       return;
     noInterrupts();
     pulse_relay_pins[turn->status & 0x1F]=pin & 0x7F;
     interrupts();
   } else {
+    DEBUGLN("NOT PULSED");
     // Non pulse relay so switch one ON the other OFF
     if (first && (turn->relay_pin_2!=0xFE))
       digitalWrite(turn->relay_pin_2 & 0x7F, LOW);

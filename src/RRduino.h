@@ -52,12 +52,12 @@ extern bool save_cfg_to_eeprom;
 void noop();
 void set_data_dir(bool write=true);
 // DEBUG MACRO
-//#define DEBUG(msg) Serial.print(msg)
-//#define DEBUGLN(msg) Serial.println(msg)
-//#define USE_DEBUG
-#define DEBUG(msg) noop()
-#define DEBUGLN(msg) noop()
-#undef USE_DEBUG
+#define DEBUG(msg) Serial.print(msg)
+#define DEBUGLN(msg) Serial.println(msg)
+#define USE_DEBUG
+//#define DEBUG(msg) noop()
+//#define DEBUGLN(msg) noop()
+//#undef USE_DEBUG
 
 // Timer defines
 #if defined(__AVR_ATmega32U4__)
