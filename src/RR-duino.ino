@@ -290,6 +290,11 @@ int write_one_turnout(byte subadd)
   else
     turnout->status &= ~(1 << TURNOUT_POS_BV);
   turnout->status &= ~(1<<TURNOUT_SYNC_BV);
+  // Check if it was fine tuning
+  if ((turnout->status & 0x1F)==0) {
+    servos[0].detach();  // detach from slot 0
+    turnout->status = (turnout->status & 0xE0)+NO_SERVO;  // No servo slot attached
+  }
   if (!save_cfg_to_eeprom)
     return 0;
   // save position to eeprom
