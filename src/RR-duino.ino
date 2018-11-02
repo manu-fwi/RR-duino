@@ -18,27 +18,16 @@ bool address_mode = false;
  
 byte address;               // This holds the address of this slave
 
-// Timer2 init counter and secondary counter
-// 160 ticks
-// The timer freq with 1024 prescaler is roughly 16000
-// So the INT freq is 100Hz, just need to divide by 2 to get the 50Hz
 
-#ifdef USE_TIMER2
-volatile byte timer2=0;
-#endif
-unsigned long d=0,t = 0;
+volatile byte timer=0;
+
 //********* ISR for the pin pulses (relay pins) ********
 
 ISR(TIMER_ISR)
 {
-#ifdef USE_TIMER2
-  timer2++;
-  if (timer2==2)
-#endif
+  timer++;
+  if (timer==TIMER_COUNT)
   {
-    t= micros()-d;
-    d = micros();
-    
     // Begin or finish a pulse (depending on current state):
     //   if HIGH, pulse should be ended and pin is discarded
     //   if LOW, pulse must begin
@@ -53,9 +42,7 @@ ISR(TIMER_ISR)
         }
       }
     }
-#ifdef USE_TIMER2
-    timer2 = 0;
-#endif
+    timer = 0;
   }
 }
 
@@ -209,7 +196,7 @@ void setup() {
     pulse_relay_pins[i]=0;
   interrupts();
   
-  // Timer2 setting
+  // Timer setting
   INIT_TIMER();
   //clear_eeprom(false);
   #ifdef USE_DEBUG
@@ -1005,34 +992,29 @@ bool in_range(byte val,byte bound_1,byte bound_2)
 
 void begin_pin_pulse(turnout_cfg_t * turn)
 {
-  byte pin;
-  bool first = true;
-  DEBUGLN("begin pin");
+  byte high_pin,low_pin;
+
   if (turn->status & (1 << TURNOUT_POS_BV)) {// which position
-    pin = turn->relay_pin_2;
-    first = false;
+    high_pin = turn->relay_pin_2;
+    low_pin = turn->relay_pin_1;
+  } else {
+    high_pin = turn->relay_pin_1; 
+    low_pin = turn->relay_pin_2;
   }
-  else
-    pin = turn->relay_pin_1; 
   // Is it a pulsed pin
-  if (pin & (1<<PIN_RELAY_PULSE_BV)) {
-    DEBUGLN("PULSED!!!");
-    if (pin==0xFE)
+  if (high_pin & (1<<PIN_RELAY_PULSE_BV)) {
+    if (high_pin==0xFE)
       return;
     noInterrupts();
-    pulse_relay_pins[turn->status & 0x1F]=pin & 0x7F;
+    pulse_relay_pins[turn->status & 0x1F]=high_pin & 0x7F;
     interrupts();
   } else {
-    DEBUGLN("NOT PULSED");
     // Non pulse relay so switch one ON the other OFF
-    if (first && (turn->relay_pin_2!=0xFE))
-      digitalWrite(turn->relay_pin_2 & 0x7F, LOW);
-    else if (!first && (turn->relay_pin_1!=0xFE))
-      digitalWrite(turn->relay_pin_1 & 0x7F, LOW);
-    if (pin != 0xFE)
-      digitalWrite(pin & 0x7F, HIGH);
+    if (low_pin!=0xFE)
+      digitalWrite(low_pin & 0x7F, LOW);
+    if (high_pin != 0xFE)
+      digitalWrite(high_pin & 0x7F, HIGH);
   }
-  
 }
 
 // Move all turnouts that have been activated
@@ -1080,7 +1062,7 @@ void process_turnouts()
       }
       else {
         servos[cur->status & 0x1F].write(cur->current_pos);
-        if (cur->current_pos == abs(cur->straight_pos-cur->thrown_pos)/2)
+        if (cur->current_pos == ((cur->straight_pos+cur->thrown_pos)/2))
           begin_pin_pulse(cur);
       }
       // add dir to go from straight to thrown pos, substract otherwise
@@ -1501,12 +1483,5 @@ void loop() {
           new_command = false;  // wait for next START BYTE
       } else new_command = false; // buffer full without a valid command, start over
     }
-  }
-  noInterrupts();
-  unsigned long t1=t;
-  interrupts();
-  if (t1>25000) {
-    DEBUG("ISR TOO SLOW:");
-    DEBUGLN(t1);
   }
 }

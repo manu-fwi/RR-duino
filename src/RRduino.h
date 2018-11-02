@@ -60,8 +60,14 @@ void set_data_dir(bool write=true);
 //#undef USE_DEBUG
 
 // Timer defines
+
+// Counter limit => multiply by 10ms to know the pulse length (ex: 2 => 20ms pulse length)
+#define TIMER_COUNT 2
+
 #if defined(__AVR_ATmega32U4__)
 //Use timer 4 for this one (Leonardo)
+// Prescaler is set to 16384 so freq is 1KHz (period is 1ms)
+// Use the OCR4C to increase  the period, here 10 so period is 10ms
 #define USE_TIMER4
 
 #define TIMER_ISR TIMER4_COMPA_vect
@@ -73,12 +79,16 @@ void set_data_dir(bool write=true);
   TIMSK4 |= (1<<OCIE4A);\
   noInterrupts();\
   TC4H = 0;\
-  OCR4C= 9;\
+  OCR4C= 10;\
   interrupts();\
   })
 
 #else
 // Use timer 2 for others (Uno, Mega)
+// Timer2 init counter
+// 160 ticks
+// The timer freq with 1024 prescaler is roughly 16000
+// So this gets us a 100 Hz frequency (period is 10 ms)
 #define USE_TIMER2
 
 #define TIMER_ISR TIMER2_COMPA_vect
