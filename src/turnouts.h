@@ -20,6 +20,9 @@
 #define TURNOUT_POS_BV 5
 
 #define RELAY_PULSE_LEN 10  // 10ms pulse for latching relays
+
+#define REPOS_TURNOUT_TIME 80 // in ms for reposition time for servos
+
 struct turnout_cfg_t
 {
   byte subadd;    // B7: reserved B7:0 (turnout config)

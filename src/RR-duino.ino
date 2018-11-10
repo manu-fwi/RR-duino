@@ -6,18 +6,18 @@
 #include <Servo.h>
 
 // *************** globals *******************
-HardwareSerial& to_bus = Serial1;
+HardwareSerial& to_bus = SERIAL_PORT;
 byte data_dir_pin = 3; // 255 to disable for normal Serial port
 bool save_cfg_to_eeprom = false;
 
 // Pool of servos top be used
 Servo servos[NB_SERVOS];  // servos[0] is reserved for turnout position tuning
+unsigned long times[NB_SERVOS]; // Timers used to reposition servos at startup
 volatile byte pulse_relay_pins[NB_SERVOS];  // pins that needs to be pulsed; MSB indicates state
 byte version_nb;
 bool address_mode = false;
  
 byte address;               // This holds the address of this slave
-
 
 volatile byte timer=0;
 
@@ -281,8 +281,11 @@ int write_one_turnout(byte subadd)
   }
   byte pos = (subadd >> SUB_VALUE_BV) & 0x01;
   // Check if the turnout is already in position
-  if (pos == ((turnout->status >> TURNOUT_POS_BV) & 0x01))
+  if (pos == ((turnout->status >> TURNOUT_POS_BV) & 0x01)) {
+    // Already in position, just send the turnout feedback
+    queue_async_turnout(turnout);
     return 0;
+  }
   // Put it in "moving state" and set new position
   turnout->status |= (1 << TURNOUT_MOV_BV);
   if (pos)
@@ -1042,34 +1045,41 @@ void process_turnouts()
         // We just put it in place rapidly and pulse the relay pin if needed
         if (cur->current_pos == UNVALID_POS) {
           begin_pin_pulse(cur); // pulse the relay immediately
+          times[servo_index]=millis(); // Setup starting time for rapid repositionning of servo
           // Setup the pos right before the end position
           if (cur->status & (1 << TURNOUT_POS_BV))
-            cur->current_pos = cur->thrown_pos-10*dir;
+            cur->current_pos = cur->thrown_pos;
           else
-            cur->current_pos = cur->straight_pos+10*dir;
+            cur->current_pos = cur->straight_pos;
         } else {
           // Put the correct current position
-          if (cur->status & (1 << TURNOUT_POS_BV))
+          if (cur->status & (1 << TURNOUT_POS_BV)) 
             cur->current_pos = cur->straight_pos;
           else
             cur->current_pos = cur->thrown_pos;
+          times[servo_index]=0; // 0 Means it is a normal servo positionning
         }
         servos[cur->status & 0x01F].write(cur->current_pos);  
         servos[cur->status & 0x01F].attach(cur->servo_pin);
       }
-      else if (!in_range(cur->current_pos,cur->straight_pos,cur->thrown_pos)) {
+      else if (((times[cur->status & 0x01F] == 0) && !in_range(cur->current_pos,cur->straight_pos,cur->thrown_pos))
+              || (times[cur->status & 0x01F]>millis()+REPOS_TURNOUT_TIME)) {
         // Movement is done, detach the servo
         servos[cur->status & 0x1F].detach();
         cur->status = (cur->status &0xE0 & ~(1 << TURNOUT_MOV_BV)) | NO_SERVO;  // unset servo index and movement bit
         DEBUG(cur->status);
         // Queue async event
         queue_async_turnout(cur);
+        return;
       }
-      else {
+      else if (times[cur->status & 0x01F]==0) {
         servos[cur->status & 0x1F].write(cur->current_pos);
         if (cur->current_pos == ((cur->straight_pos+cur->thrown_pos)/2))
           begin_pin_pulse(cur);
       }
+      if (times[cur->status & 0x01F]!=0)
+        // Do not change position if we are in rapid repositionning
+        return;
       // add dir to go from straight to thrown pos, substract otherwise
       DEBUGLN(cur->current_pos);
       if (cur->status & (1 << TURNOUT_POS_BV))

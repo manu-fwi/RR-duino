@@ -3,6 +3,17 @@
 
 #include "Arduino.h"
 
+// Serial port to use
+#define SERIAL_PORT Serial1
+
+// DEBUG MACRO
+#define DEBUG(msg) Serial.print(msg)
+#define DEBUGLN(msg) Serial.println(msg)
+#define USE_DEBUG
+//#define DEBUG(msg) noop()
+//#define DEBUGLN(msg) noop()
+//#undef USE_DEBUG
+
 extern HardwareSerial& to_bus;
 extern byte data_dir_pin;  // Dir pin, 255 means normal serial
 extern byte address;
@@ -51,13 +62,6 @@ extern bool save_cfg_to_eeprom;
 
 void noop();
 void set_data_dir(bool write=true);
-// DEBUG MACRO
-#define DEBUG(msg) Serial.print(msg)
-#define DEBUGLN(msg) Serial.println(msg)
-#define USE_DEBUG
-//#define DEBUG(msg) noop()
-//#define DEBUGLN(msg) noop()
-//#undef USE_DEBUG
 
 // Timer defines
 
