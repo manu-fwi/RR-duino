@@ -153,30 +153,23 @@ def load_config(filename):
 
     with open(filename) as cfg_file:
         config = json.load(cfg_file)
+    if "serial_port" not in config:
+        debug("No serial port indicated!")
+        return None
     #plug reasonable default values for secondary parameters
     if "serial_speed" not in config:
         config["serial_speed"]=19200
-    if "openlcb_gateway_ip" not in config:
-        config["openlcb_gateway_ip"]="127.0.0.1"
-    if "openlcb_gateway_port" not in config:
-        config["openlcb_gateway_port"]=50001
-    if "nodes_ID_filename" not in config:
-        config["nodes_ID_filename"]="RR_duino_net_serial_nodes_DB.cfg"
+    #network port to listen to
+    if "network_port" not in config:
+        config["network_port"]=50010
+    #if auto_discover is not set, set it to True
+    if "auto_discover" not in config:
+        config["auto_discover"]=True
+    #list of nodes addresses (can be empty, will trigger auto-discover
+    if "nodes_addresses" not in config:
+        config["nodes_addresses"]=[]
     
     return config
-
-def poll_net():
-    global rcv_messages
-    buf=b""
-    try:
-        buf=s.recv(200).decode('utf-8') #byte array: the raw cmri message
-        #debug(buf)
-    except BlockingIOError:
-        pass
-    if len(buf)>0:
-        rcv_messages+=buf
-        return True
-    return False
 
 def send_msg(msg):
     #send a message to the serial port and wait for the answer (or timeout)
@@ -245,7 +238,9 @@ if len(sys.argv)>=2:
     config = load_config(sys.argv[1])
 else:
     config = load_config("RR_duino_net_serial.cfg")
-    
+
+if config is None:
+    quit()
 #connection to the serial bus
 ser = serial_bus.serial_bus(config["serial_port"],config["serial_speed"])
 
@@ -268,9 +263,13 @@ waiting_answer_from = None #this is the node we are waiting an answer from
 answer_clock = 0
 
 time.sleep(1) #time for arduino serial port to settle down
-gateway_ip = config["openlcb_gateway_ip"]
-gateway_port = config["openlcb_gateway_port"]
-s =socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+
+#server connection
+serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_add = "127.0.0.1" #FIXME
+serversocket.bind((server_add, config["network_port"]))
+debug("RR_duino_monitor listening on ",server_add," at port ",config["network_port"])
+serversocket.listen(5)
 
 #load nodes from files and bring them online
 #dict of fullID address correspondances
@@ -280,37 +279,35 @@ dead_nodes={}
 last_dead_nodes_ping = time.time()
 #dict of fullID online node correspondances
 online_nodes = {}
-#dict of fullID <-> managed nodes (online and declared to the gateway)
-managed_nodes = {}
-load_nodes()
 
-#connect to gateway
-connected = False
-while not connected:
-    try:
-        s.connect((gateway_ip,gateway_port))
-        connected = True
-    except ConnectionError:
-        debug("connection error, retrying in 1 sec")
-        time.sleep(1)
-debug("connected to gateway!")
-s.settimeout(0)
-#create or connect to existing cmri_net_bus
-s.send(("RR_DUINO_NET_BUS RR_duino bus 1;").encode('utf-8'))
+#sockets to read
+to_read=[serversocket]
 
+        if self.internal_sock in ready_to_read:
+            debug("received from internal sock!!")
+
+        if self.
 while True:
-    if online_nodes:
-        #try to put all online nodes with good config to "managed" state (declare to gateway)
-        online_to_del = []
-        for ID in online_nodes:
-            if to_managed(ID):
-                managed_nodes[ID]=online_nodes[ID]
-                online_to_del.append(ID)
-        for ID in online_to_del:
-            del online_nodes[ID]
-
-    if poll_net():
-        decode_messages()
+    #first check network connections
+    ready_to_read,ready_to_write,in_error = select.select(to_read,[],[],timeout)
+    if serversocket in ready_to_read::
+        clientsocket,addr = self.serversocket.accept()
+        address = (str(addr).split("'"))[1]
+        debug("Got a connection from", address)
+        ready_to_read.remove(serversocket)
+    #check if we got something from jmri (through net)
+    if ready_to_read is not empty:
+        try:
+            m = read_to_read[0].recv(200).decode('utf-8')
+        except socket.error:
+            debug("recv error")
+            #debug(len(m)," => ",m)
+            if not m:
+                #ready to read and empty msg means deconnection
+                print("Client has deconnected")
+            else:
+                rcv_messages+=m
+                decode_messages()
 
     #process serial I/O
     ser.process_IO()
