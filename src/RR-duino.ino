@@ -1063,7 +1063,7 @@ void process_turnouts()
         servos[cur->status & 0x01F].attach(cur->servo_pin);
       }
       else if (((times[cur->status & 0x01F] == 0) && !in_range(cur->current_pos,cur->straight_pos,cur->thrown_pos))
-              || (times[cur->status & 0x01F]>millis()+REPOS_TURNOUT_TIME)) {
+              || ((times[cur->status & 0x01F] != 0) && (times[cur->status & 0x01F]+REPOS_TURNOUT_TIME<millis()))) {
         // Movement is done, detach the servo
         servos[cur->status & 0x1F].detach();
         cur->status = (cur->status &0xE0 & ~(1 << TURNOUT_MOV_BV)) | NO_SERVO;  // unset servo index and movement bit

@@ -21,7 +21,7 @@
 
 #define RELAY_PULSE_LEN 10  // 10ms pulse for latching relays
 
-#define REPOS_TURNOUT_TIME 80 // in ms for reposition time for servos
+#define REPOS_TURNOUT_TIME 120 // in ms for reposition time for servos
 
 struct turnout_cfg_t
 {
