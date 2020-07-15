@@ -70,16 +70,13 @@ def decode_messages():
             rcv_messages = end
 
 def node_from_address(add):
-    for ID in fullID_add:
-        if ID in managed_nodes and managed_nodes[ID].address == add:
-            return managed_nodes[ID]
+    for node in online_nodes:
+        if node.address == add:
+            return node
     return None
 
-def fullID_from_address(add):
-    for ID in fullID_add:
-        if fullID_add[ID] == add:
-            return ID
-    return None
+def discover_next_node():
+    pass
 
 def process():
     global rcv_RR_messages,ser,waiting_answer_from,answer_clock,last_dead_nodes_ping
@@ -94,26 +91,44 @@ def process():
             #timeout for an answer->node is down
             debug("node of address", waiting_answer_from.address,"is down")
             debug(answer_clock,time.time(),waiting_answer_from.address)
-            #fixme: kill node on the gateway and out of the managed list
-            ID = fullID_from_address(waiting_answer_from.address)
-            s.send(("stop_node "+str(ID)+";").encode('utf-8'))
-            dead_nodes[ID]=waiting_answer_from
+            dead_nodes.append(waiting_answer_from)
+            online_nodes.remove(waiting_answer_from)
             waiting_answer_from = None
-            debug(managed_nodes.items())
-            del managed_nodes[ID]
-        return
+        else:
+            if ser.available():     # we are receiving an answer
+                message_to_send += ser.read()
+                #debug("message_to_send=",message_to_send)
 
-    #no IO occuring let's begin a new one if there is any
+            if not RR_duino.RR_duino_message.is_complete_message(message_to_send):
+                return
+            #answer complete, send it to server
+            msg = RR_duino.RR_duino_message(message_to_send)
+            #debug("received from serial and sending it to the server:",(msg.to_wire_message()+";").encode('utf-8'))
+            s.send((msg.to_wire_message()+";").encode('utf-8')) #FIXME
+            if msg.async_events_pending():
+                #pending answers so decrease last ping time to boost its priority
+                waiting_answer_from.last_ping -= RR_duino_node.PING_TIMEOUT / 5
+                #discard the part we just sent
+                message_to_send=b""
+                waiting_answer_from = None
+
+    #not waiting for an answer
+    #if auto-discover is set, try to find a new node
+    if config["auto_discover"]:
+        discover_next_node()
+        return
+    #let's send a new command if there is any
     if rcv_RR_messages:
         msg = rcv_RR_messages.pop(0)
-        if fullID_from_address(msg.get_address()) is None:
+        node = node_from_address(msg.get_address())
+        if node is None or node not in online_nodes:
             #ignore message to disappeared nodes
             return
         #debug("Processing message from server", msg.to_wire_message())
         ser.send(msg.raw_message)
-        waiting_answer_from = node_from_address(msg.get_address())
+        waiting_answer_from = node
         answer_clock = time.time()
-    else:
+    else: #FIXME
         #no ongoing I/O on the bus check the node with older ping
         older_ping = time.time()
         node_to_ping = None
@@ -283,20 +298,17 @@ online_nodes = {}
 #sockets to read
 to_read=[serversocket]
 
-        if self.internal_sock in ready_to_read:
-            debug("received from internal sock!!")
-
-        if self.
 while True:
     #first check network connections
     ready_to_read,ready_to_write,in_error = select.select(to_read,[],[],timeout)
-    if serversocket in ready_to_read::
+    if serversocket in ready_to_read:
         clientsocket,addr = self.serversocket.accept()
         address = (str(addr).split("'"))[1]
         debug("Got a connection from", address)
         ready_to_read.remove(serversocket)
     #check if we got something from jmri (through net)
     if ready_to_read is not empty:
+        #we only read from the first socket (which should be JMRI)
         try:
             m = read_to_read[0].recv(200).decode('utf-8')
         except socket.error:
@@ -304,7 +316,7 @@ while True:
             #debug(len(m)," => ",m)
             if not m:
                 #ready to read and empty msg means deconnection
-                print("Client has deconnected")
+                print("JMRI has deconnected")
             else:
                 rcv_messages+=m
                 decode_messages()
@@ -312,20 +324,5 @@ while True:
     #process serial I/O
     ser.process_IO()
     process()
-    if ser.available():     # we are receiving an answer
-        message_to_send += ser.read()
-        #debug("message_to_send=",message_to_send)
-
-        if RR_duino.RR_duino_message.is_complete_message(message_to_send):
-            #answer complete, send it to server
-            msg = RR_duino.RR_duino_message(message_to_send)
-            #debug("received from serial and sending it to the server:",(msg.to_wire_message()+";").encode('utf-8'))
-            s.send((msg.to_wire_message()+";").encode('utf-8'))
-            if msg.async_events_pending():
-                #pending answers so decrease last ping time to boost its priority
-                waiting_answer_from.last_ping -= RR_duino_node.PING_TIMEOUT / 5
-            #discard the part we just sent
-            message_to_send=b""
-            waiting_answer_from = None
         
 ser.close()
