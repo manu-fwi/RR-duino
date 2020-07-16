@@ -69,31 +69,76 @@ def decode_messages():
             rcv_RR_messages.append(RR_duino.RR_duino_message.from_wire_message(first))
             rcv_messages = end
 
-def node_from_address(add):
-    for node in online_nodes:
+def node_from_address(add,nodes_list = online_nodes):
+    for node in nodes_list:
         if node.address == add:
             return node
     return None
 
 def discover_next_node():
-    pass
+    #Check if we dont hog the bus bandwidth too much
+    if len(online_nodes)>0:
+        #we must wait between discovers, more so if we already have more nodes
+        #to give them time to come online
+        if time.time()-last_discover<len(online_nodes)/2*ANSWER_TIMEOUT:
+            #too soon just return
+            return
+    last_discover = time.time()
+    #First find the next undiscovered address
+    done = False
+    while not done:
+        discover_address+=1
+        done = True
+        for n in online_nodes:
+            if n.address==discover_address:
+                discover_address+=1
+                done=False
+                break
+    if discover_address>62:
+        #all addresses have been tried already (max is 62)
+        return
+    #build a "async cmd" message to see if someone is responding
+    msg = RR_duino.RR_duino_message.build_async_cmd(node_to_ping.address)
+    ser.send(msg.raw_message)
+    waiting_answer_from = None
+    waiting_answer_from_add = discover_address
+    answer_clock = time.time()    
 
 def process():
     global rcv_RR_messages,ser,waiting_answer_from,answer_clock,last_dead_nodes_ping
 
+    def find_oldest_ping(nodes_list):
+        older_ping = time.time()
+        node_to_ping = None
+        for node in nodes_list
+            if node.last_ping < older_ping:
+                older_ping = node.last_ping
+                if older_ping < time.time()-RR_duino_node.PING_TIMEOUT:
+                    #debug("times:",time.time(),older_ping, node.address)
+                    node_to_ping = node
+        return node_to_ping
+    
     if ser.sending():
         #if we are already sending
         #not much we can do, let's wait for IO to proceed
         return
     
-    if waiting_answer_from is not None:   #we are waiting for an answer
-        if time.time()>answer_clock+ANSWER_TIMEOUT and node_from_address(waiting_answer_from.address) is not None:
-            #timeout for an answer->node is down
-            debug("node of address", waiting_answer_from.address,"is down")
-            debug(answer_clock,time.time(),waiting_answer_from.address)
-            dead_nodes.append(waiting_answer_from)
-            online_nodes.remove(waiting_answer_from)
-            waiting_answer_from = None
+    if waiting_answer_from is not None or waiting_answer_from_add!=0:   #we are waiting for an answer
+        if time.time()>answer_clock+ANSWER_TIMEOUT:
+            if waiting_answer_from is None:
+                #we were waiting for an answer because we were trying to find a new node
+                #no answer, just give up
+                debug("auto-discover, node at",waiting_answer_from_add," not found")
+                waiting_answer_from_add = 0
+            elif waiting_answer_from in online_nodes:
+                #timeout for an answer->node is down
+                debug("node of address", waiting_answer_from.address,"is down")
+                debug(answer_clock,time.time(),waiting_answer_from.address)
+                dead_nodes.append(waiting_answer_from)
+                online_nodes.remove(waiting_answer_from)
+                waiting_answer_from = None
+            else: #timeout from a dead nodes
+                waiting_answer_from = None
         else:
             if ser.available():     # we are receiving an answer
                 message_to_send += ser.read()
@@ -101,9 +146,11 @@ def process():
 
             if not RR_duino.RR_duino_message.is_complete_message(message_to_send):
                 return
-            #answer complete, send it to server
+            #answer complete, first check if it is from a dead node or a new node that we just discovered
+            if waiting_answer_from is None: #new node just discovered
+                
             msg = RR_duino.RR_duino_message(message_to_send)
-            #debug("received from serial and sending it to the server:",(msg.to_wire_message()+";").encode('utf-8'))
+            debug("received from serial and sending it to the server:",(msg.to_wire_message()+";").encode('utf-8'))
             s.send((msg.to_wire_message()+";").encode('utf-8')) #FIXME
             if msg.async_events_pending():
                 #pending answers so decrease last ping time to boost its priority
@@ -114,7 +161,7 @@ def process():
 
     #not waiting for an answer
     #if auto-discover is set, try to find a new node
-    if config["auto_discover"]:
+    if config["auto_discover"] and discover_address<=62:
         discover_next_node()
         return
     #let's send a new command if there is any
@@ -124,22 +171,15 @@ def process():
         if node is None or node not in online_nodes:
             #ignore message to disappeared nodes
             return
-        #debug("Processing message from server", msg.to_wire_message())
+        debug("Processing message from server", msg.to_wire_message())
         ser.send(msg.raw_message)
         waiting_answer_from = node
         answer_clock = time.time()
     else: #FIXME
         #no ongoing I/O on the bus check the node with older ping
-        older_ping = time.time()
-        node_to_ping = None
-        for ID in managed_nodes:
-            if managed_nodes[ID].last_ping < older_ping:
-                older_ping = managed_nodes[ID].last_ping
-                if older_ping < time.time()-RR_duino_node.PING_TIMEOUT:
-                    #debug("times:",time.time(),older_ping, managed_nodes[ID].address)
-                    node_to_ping = managed_nodes[ID]
+        node_to_ping = find_oldest_ping(online_nodes)
         if node_to_ping is not None:
-            #debug("pinging")
+            debug("pinging node at",node.address)
             node_to_ping.last_ping = time.time()
             msg = RR_duino.RR_duino_message.build_async_cmd(node_to_ping.address)
             ser.send(msg.raw_message)
@@ -148,19 +188,14 @@ def process():
         #no node to ping, try to wake dead nodes up:
         elif time.time()>last_dead_nodes_ping+DEAD_NODES_TIME:
             #try to wake up a "dead" node
-            debug("trying to wake dead nodes up",dead_nodes.items())
-            node_to_ping = None
-            older_ping = time.time()
-            for ID in dead_nodes:
-                if dead_nodes[ID].last_ping < older_ping:
-                    older_ping = dead_nodes[ID].last_ping
-                    node_to_ping = dead_nodes[ID]
+            debug("trying to wake dead nodes up")
+            node_to_ping = find_oldest_ping(dead_nodes)
             if node_to_ping is not None:
                 node_to_ping.last_ping = time.time()
                 msg = RR_duino.RR_duino_message.build_async_cmd(node_to_ping.address)
                 if send_msg(msg) is not None:
-                    online_nodes[ID]=node_to_ping
-                    del dead_nodes[ID]
+                    online_nodes.append(node_to_ping)
+                    dead_nodes.remove(node_to_ping)
             last_dead_nodes_ping = time.time()
 
 def load_config(filename):
@@ -274,7 +309,10 @@ debug("Connected to serial port",config["serial_port"])
 rcv_messages=""  #last received messages ready to be cut and decoded
 rcv_RR_messages = []  #decoded RR_duino messages received from the gateway, waiting to be sent
 message_to_send=b""   #last incomplete message from the serial port
-waiting_answer_from = None #this is the node we are waiting an answer from
+
+#variables used to know if a node should respond and which one
+waiting_answer_from = None #this will be None if we are trying to discover a new node
+wating_answer_from_add = 0 #corresponding address, useful when you are trying to discover a new node
 answer_clock = 0
 
 time.sleep(1) #time for arduino serial port to settle down
@@ -287,14 +325,15 @@ debug("RR_duino_monitor listening on ",server_add," at port ",config["network_po
 serversocket.listen(5)
 
 #load nodes from files and bring them online
-#dict of fullID address correspondances
-fullID_add = {}
-#dict of fullID dead node correspondances (these were managed and died, we keep them and try to see if they wake up)
-dead_nodes={}
+#list of dead nodes (these were online and died, we keep them and try to see if they wake up)
+dead_nodes=[]
 last_dead_nodes_ping = time.time()
-#dict of fullID online node correspondances
-online_nodes = {}
-
+#list of online nodes
+online_nodes = []
+#last address for which we tried to discover a new node
+discover_address=0
+#last time we tried to discover a new node
+last_discover = 0
 #sockets to read
 to_read=[serversocket]
 
