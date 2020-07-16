@@ -58,7 +58,58 @@ class RR_duino_node:
         res = json.dumps({"FULLID":fullID,"ADDRESS":self.address,"VERSION":self.version,"SENSORS":self.sensors,"TURNOUTS":self.turnouts})
         debug("show_config=",res)
         return res
-            
+
+def RR_duino_to_JMRI(msg):
+    """
+    Convert the binary RR_duino message to a text based to be sent to the jython script launched from JMRI
+    Format: Prefix+address+":"+subaddress+","+0/1+";"
+    Prefix :(default AS for sensors and AT for turnouts)
+    address:address of the device (1-62)
+    subadd :number to identify the sensor/turnout for this device
+
+    returns None if an error occured, empty string if not to be sent to JMRI (eg an answer to a turnout cmd)
+    or the converted message otherwise
+    """
+    if not msg.is_valid() or not msg.is_answer():
+        debug("Invalid message or not an answer")
+        return None
+    if msg.is_write_cmd() or msg.is_config_cmd() or msg.is_special_config_cmd() or msg.is_all():
+        if msg.is_all():
+            debug("RR_duino message about all turnouts/sensors, not supported!")
+        #do not send the answer to a write cmd or a config cmd
+        return ""
+
+    #OK so it is an answer to a read cmd
+    #set prefix
+    if msg.on_turnout():
+        prefix = config["turnout_prefix"]
+    else:
+        prefix = config["sensor_prefix"]
+
+    prefix+=str(msg.get_address())+":"
+    if msg.is_list():
+        #list of subbadd,value pairs
+        result=""
+        subadds_values = msg.get_list_of_values()
+        for sub_val in subbadds_values:
+            result += prefix+str(sub_val[0])+","+str(sub_value[1])+";"
+    else:
+        subadd,value = msg.get_value()
+        return prefix+str(subadd)+","+str(value)+";"
+
+def JMRI_to_RR_duino(message):
+    """
+    Convert the text based to a binary RR_duino message to be sent to the nodes
+    Format: Prefix+address+":"+subaddress+","+0/1+";"
+    Prefix :(default AS for sensors and AT for turnouts)
+    address:address of the device (1-62)
+    subadd :number to identify the sensor/turnout for this device
+
+    returns None if an error occured or the converted message otherwise
+    """
+
+    pass
+
 def decode_messages():
     global rcv_messages,rcv_RR_messages
 
@@ -67,7 +118,9 @@ def decode_messages():
         first,sep,end = rcv_messages.partition(";")
         if sep!="":
             #FIXME: need to convert from text messages received from the jmri script (easier to debug in jmri)
-            rcv_RR_messages.append(RR_duino.RR_duino_message.from_wire_message(first))
+            msg = JMRI_to_RR_duino(first)
+            if msg is not None:
+                rcv_RR_messages.append(msg)
             rcv_messages = end
 
 def node_from_address(add,nodes_list = online_nodes):
@@ -164,11 +217,16 @@ def process():
                 dead_nodes.remove(node_to_ping)
             elif waiting_answer_from in online_nodes:
                 debug("received from serial and sending it to the server:",(msg.to_wire_message()+";").encode('utf-8'))
-                #FIXME: convert RR_duino binary message to text based message for jmri (easier to debug)
-                s.send((msg.to_wire_message()+";").encode('utf-8')) #FIXME
-                if msg.async_events_pending():
-                    #pending answers so decrease last ping time to boost its priority
-                    waiting_answer_from.last_ping -= RR_duino_node.PING_TIMEOUT / 5    
+                if jmri_sock is None:
+                    debug("jmri is not yet connected!")
+                else:
+                    #convert RR_duino binary message to text based message for jmri (easier to debug)
+                    message = RR_duino_to_JMRI(msg)
+                    if message is not None and len(message)>0:
+                        jmri_sock.send(message.encode('utf-8'))
+                    if message is not None and msg.async_events_pending():
+                        #pending answers so decrease last ping time to boost its priority
+                        waiting_answer_from.last_ping -= RR_duino_node.PING_TIMEOUT / 5    
             #reset
             message_to_send=b""
             waiting_answer_from = None
@@ -233,24 +291,23 @@ def load_config(filename):
         config["nodes_addresses"]=[]
     #prefix for sensors/turnouts in jmri
     if "sensors_prefix" not in config:
-        config["sensors_prefix"]="AR"
+        config["sensor_prefix"]="AS"
     if "turnouts_prefix" not in config:
-        config["turnoutd_prefix"]="AT"
-    
-    
+        config["turnout_prefix"]="AT"
+
     return config
 
 def poll_net():
-    global rcv_messages
+    global rcv_messages,jmri_sock
     #first check network connections
     ready_to_read,ready_to_write,in_error = select.select(to_read,[],[],timeout)
     if serversocket in ready_to_read:
-        clientsocket,addr = self.serversocket.accept()
+        jmri_sock,addr = self.serversocket.accept()
         address = (str(addr).split("'"))[1]
         debug("Got a connection from", address)
         ready_to_read.remove(serversocket)
     #check if we got something from jmri (through net)
-    if ready_to_read is not empty:
+    if jmri_sock is not None and jmri_sock in ready_to_read:
         #we only read from the first socket (which should be JMRI)
         try:
             m = read_to_read[0].recv(200).decode('utf-8')
@@ -379,6 +436,8 @@ discover_address=0
 last_discover = 0
 #sockets to read
 to_read=[serversocket]
+#socket to jmri
+jmri_sock = None
 
 while True:
     #network
