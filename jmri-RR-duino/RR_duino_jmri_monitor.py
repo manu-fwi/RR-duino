@@ -157,12 +157,16 @@ def process():
                 #unset address, we are not waiting anymore
                 waiting_answer_from_add = 0
                 
-            else:
+            elif waiting_answer_from in dead_nodes:
+                debug("node at",waiting_answer_from.address,"has woken up")
+                online_nodes.append(waiting_answer_from)
+                dead_nodes.remove(node_to_ping)
+            elif waiting_answer_from in online_nodes:
                 debug("received from serial and sending it to the server:",(msg.to_wire_message()+";").encode('utf-8'))
                 s.send((msg.to_wire_message()+";").encode('utf-8')) #FIXME
                 if msg.async_events_pending():
                     #pending answers so decrease last ping time to boost its priority
-                    waiting_answer_from.last_ping -= RR_duino_node.PING_TIMEOUT / 5
+                    waiting_answer_from.last_ping -= RR_duino_node.PING_TIMEOUT / 5    
             #reset
             message_to_send=b""
             waiting_answer_from = None
@@ -183,7 +187,7 @@ def process():
         ser.send(msg.raw_message)
         waiting_answer_from = node
         answer_clock = time.time()
-    else: #FIXME
+    else:
         #no ongoing I/O on the bus check the node with older ping
         node_to_ping = find_oldest_ping(online_nodes)
         if node_to_ping is not None:
@@ -197,13 +201,12 @@ def process():
         elif time.time()>last_dead_nodes_ping+DEAD_NODES_TIME:
             #try to wake up a "dead" node
             debug("trying to wake dead nodes up")
-            node_to_ping = find_oldest_ping(dead_nodes)
+            node_to_wake = find_oldest_ping(dead_nodes)
             if node_to_ping is not None:
-                node_to_ping.last_ping = time.time()
-                msg = RR_duino.RR_duino_message.build_async_cmd(node_to_ping.address)
-                if send_msg(msg) is not None:
-                    online_nodes.append(node_to_ping)
-                    dead_nodes.remove(node_to_ping)
+                node_to_wake.last_ping = time.time()
+                msg = RR_duino.RR_duino_message.build_async_cmd(node_to_wake.address)
+                ser.send(msg.raw_message)
+                waiting_answer_from = node_to_wake
             last_dead_nodes_ping = time.time()
 
 def load_config(filename):
@@ -228,6 +231,30 @@ def load_config(filename):
         config["nodes_addresses"]=[]
     
     return config
+
+def poll_net():
+    global rcv_messages
+    #first check network connections
+    ready_to_read,ready_to_write,in_error = select.select(to_read,[],[],timeout)
+    if serversocket in ready_to_read:
+        clientsocket,addr = self.serversocket.accept()
+        address = (str(addr).split("'"))[1]
+        debug("Got a connection from", address)
+        ready_to_read.remove(serversocket)
+    #check if we got something from jmri (through net)
+    if ready_to_read is not empty:
+        #we only read from the first socket (which should be JMRI)
+        try:
+            m = read_to_read[0].recv(200).decode('utf-8')
+        except socket.error:
+            debug("recv error")
+            #debug(len(m)," => ",m)
+            if not m:
+                #ready to read and empty msg means deconnection
+                print("JMRI has deconnected")
+            else:
+                rcv_messages+=m
+                decode_messages()
 
 def send_msg(msg):
     #send a message to the serial port and wait for the answer (or timeout)
@@ -346,28 +373,8 @@ last_discover = 0
 to_read=[serversocket]
 
 while True:
-    #first check network connections
-    ready_to_read,ready_to_write,in_error = select.select(to_read,[],[],timeout)
-    if serversocket in ready_to_read:
-        clientsocket,addr = self.serversocket.accept()
-        address = (str(addr).split("'"))[1]
-        debug("Got a connection from", address)
-        ready_to_read.remove(serversocket)
-    #check if we got something from jmri (through net)
-    if ready_to_read is not empty:
-        #we only read from the first socket (which should be JMRI)
-        try:
-            m = read_to_read[0].recv(200).decode('utf-8')
-        except socket.error:
-            debug("recv error")
-            #debug(len(m)," => ",m)
-            if not m:
-                #ready to read and empty msg means deconnection
-                print("JMRI has deconnected")
-            else:
-                rcv_messages+=m
-                decode_messages()
-
+    #network
+    poll_net()
     #process serial I/O
     ser.process_IO()
     process()
