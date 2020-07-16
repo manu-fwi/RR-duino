@@ -1,7 +1,7 @@
 import socket,time
 import serial_bus
 import json,sys
-import RR_duino_nodes as RR_duino
+import RR_duino_messages as RR_duino
 
 #constants
 ANSWER_TIMEOUT=0.2  #time out for an answer (200ms)
@@ -66,6 +66,7 @@ def decode_messages():
     while sep==";":
         first,sep,end = rcv_messages.partition(";")
         if sep!="":
+            #FIXME: need to convert from text messages received from the jmri script (easier to debug in jmri)
             rcv_RR_messages.append(RR_duino.RR_duino_message.from_wire_message(first))
             rcv_messages = end
 
@@ -163,6 +164,7 @@ def process():
                 dead_nodes.remove(node_to_ping)
             elif waiting_answer_from in online_nodes:
                 debug("received from serial and sending it to the server:",(msg.to_wire_message()+";").encode('utf-8'))
+                #FIXME: convert RR_duino binary message to text based message for jmri (easier to debug)
                 s.send((msg.to_wire_message()+";").encode('utf-8')) #FIXME
                 if msg.async_events_pending():
                     #pending answers so decrease last ping time to boost its priority
@@ -229,6 +231,12 @@ def load_config(filename):
     #list of nodes addresses (can be empty, will trigger auto-discover
     if "nodes_addresses" not in config:
         config["nodes_addresses"]=[]
+    #prefix for sensors/turnouts in jmri
+    if "sensors_prefix" not in config:
+        config["sensors_prefix"]="AR"
+    if "turnouts_prefix" not in config:
+        config["turnoutd_prefix"]="AT"
+    
     
     return config
 
@@ -288,41 +296,40 @@ def send_msg(msg):
     return None
     
 def load_nodes():
-    global fullID_add,online_nodes
-    debug("loading RR_duino nodes from",config["nodes_ID_filename"])
-    with open(config["nodes_ID_filename"]) as cfg_file:
-        fullID_add_json = json.load(cfg_file)
-    #keys in dict are always str when decoded from json so back to ints
-    for ID in fullID_add_json:
-        fullID_add[int(ID)]=fullID_add_json[ID]
-        
+    global online_nodes
+    debug("loading RR_duino nodes with addresse",config["nodes_addresses"])
+
     #try all addresses and ask each responding node to load its version
-    for fullID in fullID_add:
-        answer = send_msg(RR_duino.RR_duino_message.build_version_cmd(fullID_add[fullID]))
+    for address in config["nodes_addresses"]:
+        answer = send_msg(RR_duino.RR_duino_message.build_version_cmd(address))
         if answer is not None and answer.get_error_code()==0:
             #add the node to the online list
-            new_node = RR_duino_node(fullID_add[fullID],answer.get_version())
-            online_nodes[fullID]=new_node
+            new_node = RR_duino_node(address,answer.get_version())
+            online_nodes.append(new_node)
+        else:
+            debug("node at",address,"did not respond")
 
-def to_managed(fullID):
-    #get an online node and put it in managed state by uploading its config (load from eeprom and set save to eeprom flag)
-    #and sending a request to the server to add it
-    #return True if everything went OK or False otherwise
-
-    answer = send_msg(RR_duino.RR_duino_message.build_load_from_eeprom(fullID_add[fullID]))
-    if answer is not None and answer.get_error_code()==0:
-        answer = send_msg(RR_duino.RR_duino_message.build_save_to_eeprom(fullID_add[fullID]))
-    if answer is None or answer.get_error_code()!=0:
-        return False
-    if not online_nodes[fullID].get_config():
-        return False
-    s.send(("start_node "+online_nodes[fullID].show_config(fullID)+";").encode('utf-8'))
-    return True
-    
+    #get online node to upload its config (load from eeprom and set save to eeprom flag)
+    to_delete = []
+    for node in online_nodes:
+        answer = send_msg(RR_duino.RR_duino_message.build_load_from_eeprom(fullID_add[fullID]))
+        if answer is not None and answer.get_error_code()==0:
+            answer = send_msg(RR_duino.RR_duino_message.build_save_to_eeprom(fullID_add[fullID]))
+        if answer is None or answer.get_error_code()!=0:
+            return False
+        if not node.get_config():
+            debug("node at",node.address,"was unable to load its config from eeprom")
+            to_delete.append(node)
+        else:
+            debug("node at",node.address,"is up and running")
+    #remove the node that were not able to go online correctly
+    for node in to_delete:
+        online_nodes.remove(node)
+        
 if len(sys.argv)>=2:
     config = load_config(sys.argv[1])
 else:
-    config = load_config("RR_duino_net_serial.cfg")
+    config = load_config("RR_duino_jmri_monitor.cfg")
 
 if config is None:
     quit()
@@ -360,6 +367,7 @@ debug("RR_duino_monitor listening on ",server_add," at port ",config["network_po
 serversocket.listen(5)
 
 #load nodes from files and bring them online
+load_nodes()
 #list of dead nodes (these were online and died, we keep them and try to see if they wake up)
 dead_nodes=[]
 last_dead_nodes_ping = time.time()
