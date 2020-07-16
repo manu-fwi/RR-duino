@@ -97,8 +97,8 @@ def discover_next_node():
     if discover_address>62:
         #all addresses have been tried already (max is 62)
         return
-    #build a "async cmd" message to see if someone is responding
-    msg = RR_duino.RR_duino_message.build_async_cmd(node_to_ping.address)
+    #build a "version cmd" message to see if someone is responding
+    msg = RR_duino.RR_duino_message.build_version_cmd(node_to_ping.address)
     ser.send(msg.raw_message)
     waiting_answer_from = None
     waiting_answer_from_add = discover_address
@@ -136,9 +136,8 @@ def process():
                 debug(answer_clock,time.time(),waiting_answer_from.address)
                 dead_nodes.append(waiting_answer_from)
                 online_nodes.remove(waiting_answer_from)
-                waiting_answer_from = None
-            else: #timeout from a dead nodes
-                waiting_answer_from = None
+            waiting_answer_from = None
+            message_to_send = b""
         else:
             if ser.available():     # we are receiving an answer
                 message_to_send += ser.read()
@@ -147,17 +146,26 @@ def process():
             if not RR_duino.RR_duino_message.is_complete_message(message_to_send):
                 return
             #answer complete, first check if it is from a dead node or a new node that we just discovered
-            if waiting_answer_from is None: #new node just discovered
-                
             msg = RR_duino.RR_duino_message(message_to_send)
-            debug("received from serial and sending it to the server:",(msg.to_wire_message()+";").encode('utf-8'))
-            s.send((msg.to_wire_message()+";").encode('utf-8')) #FIXME
-            if msg.async_events_pending():
-                #pending answers so decrease last ping time to boost its priority
-                waiting_answer_from.last_ping -= RR_duino_node.PING_TIMEOUT / 5
-                #discard the part we just sent
-                message_to_send=b""
-                waiting_answer_from = None
+            if waiting_answer_from is None: #new node just discovered
+                #check correct protocol
+                if not msg.is_answer_to_version_cmd() or msg.get_address()!=waiting_answer_from_add:
+                    debug("Discovered node of address",waiting_answer_from_add,"gave an unexpected answer (should have replied to a version command) or the respinding node does not have the correct address:",msg.get_address())
+                else:
+                    #new node, build it using the version we got from it
+                    online_nodes.append(RR_duino_node(waiting_answer_from_add,msg.get_version()))
+                #unset address, we are not waiting anymore
+                waiting_answer_from_add = 0
+                
+            else:
+                debug("received from serial and sending it to the server:",(msg.to_wire_message()+";").encode('utf-8'))
+                s.send((msg.to_wire_message()+";").encode('utf-8')) #FIXME
+                if msg.async_events_pending():
+                    #pending answers so decrease last ping time to boost its priority
+                    waiting_answer_from.last_ping -= RR_duino_node.PING_TIMEOUT / 5
+            #reset
+            message_to_send=b""
+            waiting_answer_from = None
 
     #not waiting for an answer
     #if auto-discover is set, try to find a new node

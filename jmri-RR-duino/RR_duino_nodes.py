@@ -83,6 +83,9 @@ class RR_duino_message:
         if (self.raw_message[1] & 0b11111000) != (cmd & 0b11111000):
             return False
         return True
+
+    def is_answer_to_version_cmd(self):
+        return self.is_answer_to_cmd(0b10001001)  #version command value
     
     def is_last_answer(self):
         #return True if this message is the last answer (used mainly by show commands/async events reporting)
