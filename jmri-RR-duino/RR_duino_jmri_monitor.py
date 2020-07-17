@@ -108,7 +108,55 @@ def JMRI_to_RR_duino(message):
     returns None if an error occured or the converted message otherwise
     """
 
-    pass
+    message = message.rstrip(";")
+    if  message.startswith(config["sensor_prefix"]):
+        for_sensor = True
+    elif message.startswith(config["turnout_prefix"]):
+        for_sensor = False
+    else:
+        debug("Malformed message0:",message,"from jmri!")
+        return None
+    
+    first,sep,end = message.partition(":")
+    if sep=="":
+        debug("Malformed message1:",message,"from jmri!")
+        return None
+
+    print("first=",first[len(config["turnout_prefix"]):])
+    try:
+        address = int(first[len(config["turnout_prefix"]):])
+    except:
+        debug("Malformed message2:",message,"from jmri!")
+        return None
+    node = node_from_address(address,online_nodes)
+    if node is None:
+        debug("Unknown address:",address,"from jmri!")
+        return None
+
+    first,sep,end = end.partition(",")
+    if sep=="" and not for_sensor:
+        debug("No value given for turnout!")
+        return
+    try:
+        subadd = int(first)
+    except:
+        debug("Malformed message3:",message,"from jmri!")
+        return None
+    if not for_sensor:
+        try:
+            value = int(end)
+        except:
+            debug("Malformed message4:",message,"from jmri!")
+            return None
+        if value != 0:
+            value = 1
+    else:
+        value = 0
+
+    #build RR_duino binary message
+    result = RR_duino.RR_duino_message.build_rw_cmd_header(address,for_sensor,for_sensor,False)
+    result.extend_payload(RR_duino.RR_duino_message.encode_subadd_value((subadd,value)))
+    return result
 
 def decode_messages():
     global rcv_messages,rcv_RR_messages
@@ -123,12 +171,15 @@ def decode_messages():
                 rcv_RR_messages.append(msg)
             rcv_messages = end
 
-def node_from_address(add,nodes_list = online_nodes):
+def node_from_address(add,nodes_list):
     for node in nodes_list:
         if node.address == add:
             return node
     return None
 
+def debug(*args):
+    print(*args)
+    
 def discover_next_node():
     #Check if we dont hog the bus bandwidth too much
     if len(online_nodes)>0:
@@ -164,7 +215,7 @@ def process():
     def find_oldest_ping(nodes_list):
         older_ping = time.time()
         node_to_ping = None
-        for node in nodes_list
+        for node in nodes_list:
             if node.last_ping < older_ping:
                 older_ping = node.last_ping
                 if older_ping < time.time()-RR_duino_node.PING_TIMEOUT:
@@ -239,7 +290,7 @@ def process():
     #let's send a new command if there is any
     if rcv_RR_messages:
         msg = rcv_RR_messages.pop(0)
-        node = node_from_address(msg.get_address())
+        node = node_from_address(msg.get_address(),online_nodes)
         if node is None or node not in online_nodes:
             #ignore message to disappeared nodes
             return
@@ -382,7 +433,8 @@ def load_nodes():
     #remove the node that were not able to go online correctly
     for node in to_delete:
         online_nodes.remove(node)
-        
+
+
 if len(sys.argv)>=2:
     config = load_config(sys.argv[1])
 else:
@@ -390,6 +442,13 @@ else:
 
 if config is None:
     quit()
+
+online_nodes = [RR_duino_node(1,1),RR_duino_node(2,1),RR_duino_node(3,1)]
+while True:
+    s = input("command")
+    msg = JMRI_to_RR_duino(s)
+    if msg is not None:
+        print(msg.to_wire_message())
 #connection to the serial bus
 ser = serial_bus.serial_bus(config["serial_port"],config["serial_speed"])
 
