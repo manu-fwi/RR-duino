@@ -39,7 +39,8 @@ class RR_duino_node:
         debug("unable to get sensors config from node at",node.address)
         if not error:
             for m in answer:
-                self.sensors.extend(m.get_list_of_sensors_config())
+                #concatenate dicts (python >=3.5)
+                {**self.sensors,**(m.get_list_of_sensors_config())}
                 debug("Sensors list=",self.sensors)
         if not pending_answer:  #reset ping time if no answer is pending, otherwise decrease by PING_TIMEOUT/5
             self.last_ping = time.time()
@@ -421,11 +422,12 @@ def load_nodes():
         if answer is None or answer.get_error_code()!=0:
             debug("node at",node.address,"was unable to save its config to eeprom")                              
             continue
-        answer = send_msg(RR_duino.RR_duino_message.build_save_to_eeprom(node.address)
+        answer = send_msg(RR_duino.RR_duino_message.build_save_to_eeprom(node.address))
         if answer is None or answer.get_error_code()!=0:
             debug("node at",node.address,"was unable to save its config to eeprom")                              
             continue
-        if not node.get_config():
+        if not node.get_sensors_config():
+            
             debug("node at",node.address,"was unable to load its config from eeprom")
             continue
         else:
