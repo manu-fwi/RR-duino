@@ -74,23 +74,38 @@ def RR_duino_to_JMRI(msg):
         return ""
 
     #OK so it is an answer to a read cmd
-    #set prefix (output sensors are treated as turnout in jmri)
-    #FIXME: for sensors we need to distinguish between input and output ones
-    #as output sensors are represented as turnouts in jmri
-    if msg.on_turnout():
-        prefix = config["turnout_prefix"]
-    else:
-        prefix = config["sensor_prefix"]
 
-    prefix+=str(msg.get_address())+":"
+    #set prefix to sensor prefix as this is a read command (input sensors are treated as sensors in jmri
+    #and turnout feedback also uses sensors)
+    
+    #position turnouts are translated as input sensors because of the way JMRI defines turnout feedback
+    #the correspondence is as follows: if turnout is number 6 then the sensor will be 50+6=56
+    #so AT12:6 feedback sensor will be AS12:56
+    #CONSEQUENCE: only 49 turnouts can be used
+
+    #output sensors are represented as turnouts with feedback in jmri so an output sensor feedback will be
+    #translated as a sensor by adding 50 to its subaddress
+    #so output sensor on device of address 12 and subaddress 15 will be translated as AS12:65
+    #VERY IMPORTANT: this means that no output sensor can have the same subaddress a a turnout!
+    #CONSEQUENCE: only 50 input sensors (subaddress from 1 to 50) are allowed
+
+    node = node_from_address(msg.get_address())
+    prefix = config["sensor_prefix"]+str(msg.get_address())+":"
     if msg.is_list():
         #list of subbadd,value pairs
         result=""
         subadds_values = msg.get_list_of_values()
         for sub_val in subbadds_values:
-            result += prefix+str(sub_val[0])+","+str(sub_value[1])+";"
+            number = sub_value[0]
+            if msg.on_turnout() or node.sensors[msg.sub_val[0]].type==RR_duino.RR_duino_message.OUTPUT_SENSOR:
+                #make sure to translate the sensor number for turnouts or output sensors
+                number += 50
+            result += prefix+str(number)+","+str(sub_value[1])+";"
     else:
         subadd,value = msg.get_value()
+        if msg.on_turnout() or node.sensors[msg.sub_val[0]].type==RR_duino.RR_duino_message.OUTPUT_SENSOR:
+            #make sure to translate the sensor number for turnouts or output sensors
+            subadd += 50
         return prefix+str(subadd)+","+str(value)+";"
 
 def JMRI_to_RR_duino(message):
