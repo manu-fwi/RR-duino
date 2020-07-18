@@ -626,8 +626,6 @@ void read_all_turnouts()
       command_buf[cmd_pos]=0;
     }
     bool thrown = (turnout->status & (1 << TURNOUT_POS_BV))!=0;
-    if ((turnout->status & (1 << TURNOUT_MOV_BV))!=0)  // It is moving so actually invert the position
-      thrown = !thrown;
     if (thrown) {
       command_buf[cmd_pos] |= (1 << bit_pos);
     }
