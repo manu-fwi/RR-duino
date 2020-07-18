@@ -17,37 +17,30 @@ class RR_duino_node:
         #config subaddress <->(servo_pin,straight pos,thrown pos [,relay pin 1, relay pin 2,pulse pin 1, pulse pin 2])
         self.last_ping = 0
 
-    def get_config(self):
+    def get_sensors_config(self):
         #get dict of sensors and turnouts
-        debug("Getting config from node at ",self.address)
+        debug("Getting sensors config from node at ",self.address)
         command =RR_duino.RR_duino_message.build_show_cmd(self.address)
-        self.sensors=[]
-        self.turnouts=[]
+        self.sensors={}
+        self.turnouts={}
         i=0
         error = False
         pending_answers = False
-        while (i<2) and not error:
-            answer = []
-            done = False
-            while not done:
-                answer.append(send_msg(command))
-                if answer[-1] is None or not answer[-1].is_answer_to_cmd(command.get_command()):
-                    debug("Bad answer when loading config from node at ",self.address)
-                    done = True
-                    error = True
-                else:
-                    done = answer[-1].is_last_answer()
-            if not error:
-                for m in answer:
-                    if i==0:
-                        self.sensors.extend(m.get_list_of_sensors_config())
-                        debug("Sensors list=",self.sensors)
-                    else:
-                        self.turnouts.extend(m.get_list_of_turnouts_config())
-                        debug("Turnouts list=",self.turnouts)
-
-            command = RR_duino.RR_duino_message.build_show_cmd(self.address,True) #for turnouts now
-            i+=1
+        answer = []
+        done = False
+        while not done:
+            answer.append(send_msg(command))
+            if answer[-1] is None or not answer[-1].is_answer_to_cmd(command.get_command()):
+                debug("Bad answer when loading config from node at ",self.address)
+                done = True
+                error = True
+            else:
+                done = answer[-1].is_last_answer()
+        debug("unable to get sensors config from node at",node.address)
+        if not error:
+            for m in answer:
+                self.sensors.extend(m.get_list_of_sensors_config())
+                debug("Sensors list=",self.sensors)
         if not pending_answer:  #reset ping time if no answer is pending, otherwise decrease by PING_TIMEOUT/5
             self.last_ping = time.time()
         else:
@@ -422,14 +415,19 @@ def load_nodes():
     #get online node to upload its config (load from eeprom and set save to eeprom flag)
     to_delete = []
     for node in online_nodes:
-        answer = send_msg(RR_duino.RR_duino_message.build_load_from_eeprom(fullID_add[fullID]))
-        if answer is not None and answer.get_error_code()==0:
-            answer = send_msg(RR_duino.RR_duino_message.build_save_to_eeprom(fullID_add[fullID]))
+        #prepare to discard node in case of any error
+        to_delete.append(node)
+        answer = send_msg(RR_duino.RR_duino_message.build_load_from_eeprom(node.address))
         if answer is None or answer.get_error_code()!=0:
-            return False
+            debug("node at",node.address,"was unable to save its config to eeprom")                              
+            continue
+        answer = send_msg(RR_duino.RR_duino_message.build_save_to_eeprom(node.address)
+        if answer is None or answer.get_error_code()!=0:
+            debug("node at",node.address,"was unable to save its config to eeprom")                              
+            continue
         if not node.get_config():
             debug("node at",node.address,"was unable to load its config from eeprom")
-            to_delete.append(node)
+            continue
         else:
             debug("node at",node.address,"is up and running")
     #remove the node that were not able to go online correctly

@@ -182,11 +182,12 @@ class RR_duino_message:
         return (self.raw_message[index] & 0x3F, self.raw_message[index+1] & 0x7F, sensor_type)
     
     def get_list_of_sensors_config(self):
-        #return a list if tuples (see get_sensor_config)
-        l = []
+        #return a dict subaddress<-> tuples (pin,type)
+        l = {}
         index = 3 #beginning of list
         while index<len(self.raw_message)-1:  #end of list
-            l.append(self.get_sensor_config(index))
+            subadd,pin,type = self.get_sensor_config(index)
+            l[subadd]=(pin,type)
             index+=2  #next sensor config
         return l
         
@@ -208,13 +209,13 @@ class RR_duino_message:
                     self.raw_message[index+2],self.raw_message[index+3])
         
     def get_list_of_turnouts_config(self):
-        #return a list of tuples (subaddress,pin,type)
-        #only valid for a config sensor list command or a show sensor command answer
-        l = []
+        #return a dict subadd <-> tuples (pin,type)
+        #only valid for a config turnout list command or a show turnout command answer
+        l = {}
         index = 3 #beginning of list
         while index<len(self.raw_message)-1:  #end of list
             turnout_cfg = self.get_turnout_config(index)
-            l.append(turnout_cfg)
+            l[turnout_cgf[0]]=turnout_cfg[1:]
             if len(turnout_cfg)==4:#next turnout config index depends on relay pins present or not
                 index+=4  
             else:
