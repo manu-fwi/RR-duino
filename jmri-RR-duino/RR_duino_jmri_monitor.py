@@ -80,7 +80,9 @@ def RR_duino_to_JMRI(msg):
         return ""
 
     #OK so it is an answer to a read cmd
-    #set prefix
+    #set prefix (output sensors are treated as turnout in jmri)
+    #FIXME: for sensors we need to distinguish between input and output ones
+    #as output sensors are represented as turnouts in jmri
     if msg.on_turnout():
         prefix = config["turnout_prefix"]
     else:
