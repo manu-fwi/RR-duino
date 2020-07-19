@@ -97,7 +97,7 @@ def RR_duino_to_JMRI(msg):
     #VERY IMPORTANT: this means that no output sensor can have the same subaddress a a turnout!
     #CONSEQUENCE: only 50 input sensors (subaddress from 1 to 50) are allowed
 
-    node = node_from_address(msg.get_address())
+    node = node_from_address(msg.get_address(),online_nodes)
     prefix = config["sensor_prefix"]+str(msg.get_address())+":"
     if msg.is_list():
         #list of subbadd,value pairs
@@ -105,13 +105,13 @@ def RR_duino_to_JMRI(msg):
         subadds_values = msg.get_list_of_values()
         for sub_val in subbadds_values:
             number = sub_value[0]
-            if msg.on_turnout() or node.sensors[msg.sub_val[0]].type==RR_duino.RR_duino_message.OUTPUT_SENSOR:
+            if msg.on_turnout() or node.sensors[sub_val[0]][1]==RR_duino.RR_duino_message.OUTPUT_SENSOR:
                 #make sure to translate the sensor number for turnouts or output sensors
                 number += 50
             result += prefix+str(number)+","+str(sub_value[1])+";"
     else:
         subadd,value = msg.get_value()
-        if msg.on_turnout() or node.sensors[msg.sub_val[0]].type==RR_duino.RR_duino_message.OUTPUT_SENSOR:
+        if msg.on_turnout() or node.sensors[subadd][1]==RR_duino.RR_duino_message.OUTPUT_SENSOR:
             #make sure to translate the sensor number for turnouts or output sensors
             subadd += 50
         return prefix+str(subadd)+","+str(value)+";"
@@ -274,7 +274,7 @@ def process():
             if waiting_answer_from is None: #new node just discovered
                 #check correct protocol
                 if not msg.is_answer_to_version_cmd() or msg.get_address()!=waiting_answer_from_add:
-                    debug("Discovered node of address",waiting_answer_from_add,"gave an unexpected answer (should have replied to a version command) or the respinding node does not have the correct address:",msg.get_address())
+                    debug("Discovered node of address",waiting_answer_from_add,"gave an unexpected answer (should have replied to a version command) or the responding node does not have the correct address:",msg.get_address())
                 else:
                     #new node, build it using the version we got from it
                     discovered_nodes.append(RR_duino_node(waiting_answer_from_add,msg.get_version()))
@@ -459,12 +459,33 @@ else:
 if config is None:
     quit()
 
-online_nodes = [RR_duino_node(1,1),RR_duino_node(2,1),RR_duino_node(3,1)]
+"""
+Tests
+n1 = RR_duino_node(5,1)
+online_nodes = [n1,RR_duino_node(2,1),RR_duino_node(3,1)]
+n1.sensors[2]=(1,RR_duino.RR_duino_message.INPUT_SENSOR)
+n1.sensors[7]=(1,RR_duino.RR_duino_message.OUTPUT_SENSOR)
 while True:
-    s = input("command")
+    s = input("command:")
+    if s=="STOP":
+        break
     msg = JMRI_to_RR_duino(s)
     if msg is not None:
         print(msg.to_wire_message())
+msg = RR_duino.RR_duino_message.build_simple_rw_cmd(5,2,read=True)
+msg.raw_message[1] &= ~(1 << RR_duino.RR_duino_message.CMD_ANSW_BIT)
+print(msg.to_wire_message(),"<-->",RR_duino_to_JMRI(msg))
+msg = RR_duino.RR_duino_message.build_simple_rw_cmd(5,7,read=True)
+msg.raw_message[1] &= ~(1 << RR_duino.RR_duino_message.CMD_ANSW_BIT)
+print(msg.to_wire_message(),"<-->",RR_duino_to_JMRI(msg))
+msg = RR_duino.RR_duino_message.build_simple_rw_cmd(5,8,True,False,1)
+msg.raw_message[1] &= ~(1 << RR_duino.RR_duino_message.CMD_ANSW_BIT)
+print(msg.to_wire_message(),"<-->",RR_duino_to_JMRI(msg))
+msg = RR_duino.RR_duino_message.build_simple_rw_cmd(5,8,True,False,0)
+msg.raw_message[1] &= ~(1 << RR_duino.RR_duino_message.CMD_ANSW_BIT)
+print(msg.to_wire_message(),"<-->",RR_duino_to_JMRI(msg))
+quit()
+"""
 #connection to the serial bus
 ser = serial_bus.serial_bus(config["serial_port"],config["serial_speed"])
 
