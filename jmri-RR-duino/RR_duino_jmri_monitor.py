@@ -20,6 +20,14 @@ class RR_duino_node:
     def get_sensors_config(self):
         #get dict of sensors and turnouts
         debug("Getting sensors config from node at ",self.address)
+        answer = send_msg(RR_duino.RR_duino_message.build_load_from_eeprom(node.address))
+        if answer is None or answer.get_error_code()!=0:
+            debug("node at",node.address,"was unable to save its config to eeprom")                              
+            return False
+        answer = send_msg(RR_duino.RR_duino_message.build_save_to_eeprom(node.address))
+        if answer is None or answer.get_error_code()!=0:
+            debug("node at",node.address,"was unable to save its config to eeprom")                              
+            return False
         command =RR_duino.RR_duino_message.build_show_cmd(self.address)
         self.sensors={}
         self.turnouts={}
@@ -269,7 +277,10 @@ def process():
                     debug("Discovered node of address",waiting_answer_from_add,"gave an unexpected answer (should have replied to a version command) or the respinding node does not have the correct address:",msg.get_address())
                 else:
                     #new node, build it using the version we got from it
-                    online_nodes.append(RR_duino_node(waiting_answer_from_add,msg.get_version()))
+                    discovered_nodes.append(RR_duino_node(waiting_answer_from_add,msg.get_version()))
+                    #now get its config
+                    msg = RR_duino.RR_duino_message.build
+                    ser.send(msg)
                 #unset address, we are not waiting anymore
                 waiting_answer_from_add = 0
                 
@@ -424,32 +435,20 @@ def load_nodes():
         if answer is not None and answer.get_error_code()==0:
             #add the node to the online list
             new_node = RR_duino_node(address,answer.get_version())
-            online_nodes.append(new_node)
+            discovered_nodes.append(new_node)
         else:
             debug("node at",address,"did not respond")
 
     #get online node to upload its config (load from eeprom and set save to eeprom flag)
-    to_delete = []
-    for node in online_nodes:
+    for node in discovered_nodes:
         #prepare to discard node in case of any error
-        to_delete.append(node)
-        answer = send_msg(RR_duino.RR_duino_message.build_load_from_eeprom(node.address))
-        if answer is None or answer.get_error_code()!=0:
-            debug("node at",node.address,"was unable to save its config to eeprom")                              
-            continue
-        answer = send_msg(RR_duino.RR_duino_message.build_save_to_eeprom(node.address))
-        if answer is None or answer.get_error_code()!=0:
-            debug("node at",node.address,"was unable to save its config to eeprom")                              
-            continue
         if not node.get_sensors_config():
-            
             debug("node at",node.address,"was unable to load its config from eeprom")
-            continue
+            onlines_nodes.append(node)
         else:
             debug("node at",node.address,"is up and running")
     #remove the node that were not able to go online correctly
-    for node in to_delete:
-        online_nodes.remove(node)
+    discovered_nodes = []
 
 
 if len(sys.argv)>=2:
@@ -506,6 +505,8 @@ dead_nodes=[]
 last_dead_nodes_ping = time.time()
 #list of online nodes
 online_nodes = []
+#list of newly discovered nodes but not yet online (need to get their config first)
+discovered_nodes = []
 #last address for which we tried to discover a new node
 discover_address=0
 #last time we tried to discover a new node
