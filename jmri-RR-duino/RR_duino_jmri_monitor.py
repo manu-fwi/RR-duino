@@ -373,26 +373,47 @@ def load_config(filename):
 def poll_net():
     global rcv_messages,jmri_sock
     #first check network connections
-    ready_to_read,ready_to_write,in_error = select.select(to_read,[],[],timeout)
-    if serversocket in ready_to_read:
-        jmri_sock,addr = self.serversocket.accept()
+    ready_to_read,ready_to_write,in_error = select.select([jmri_server_socket],[],[],timeout)
+    if len(ready_to_read):
+        jmri_sock,addr = jmri_serversocket.accept()
         address = (str(addr).split("'"))[1]
-        debug("Got a connection from", address)
-        ready_to_read.remove(serversocket)
+        debug("JMRI RR_duino_Jython script connected from", address)
+        to_read.append(jmri_sock)
+
+    ready_to_read,ready_to_write,in_error = select.select([server_socket],[],[],timeout)
+    if len(ready_to_read):
+        new_sock,addr = jmri_serversocket.accept()
+        address = (str(addr).split("'"))[1]
+        debug("Devices controller connected from", address)
+        #add client FIXME
+        devices_client[new_sock] = None
+        to_read.append(new_sock)
+
+    ready_to_read,ready_to_write,in_error = select.select(to_read,[],[],timeout)    
     #check if we got something from jmri (through net)
-    if jmri_sock is not None and jmri_sock in ready_to_read:
-        #we only read from the first socket (which should be JMRI)
-        try:
-            m = read_to_read[0].recv(200).decode('utf-8')
-        except socket.error:
-            debug("recv error")
-            #debug(len(m)," => ",m)
+    if len(ready_to_read)>0:
+        for sock in ready_to_read:
+            try:
+                m = read_to_read[0].recv(200).decode('utf-8')
+            except socket.error:
+                debug("recv error")
+                #debug(len(m)," => ",m)
             if not m:
                 #ready to read and empty msg means deconnection
-                print("JMRI has deconnected")
-            else:
+                if sock == jmri_sock:
+                    debug("JMRI has deconnected")
+                    jmri_sock=None
+                    continue
+                else:
+                    debug("client at has disconnected")
+                    del devices_client[new_sock]
+                to_read.remove(sock)
+
+            elif sock == jmri_sock:
                 rcv_messages+=m
                 decode_messages()
+            else:
+                debug("message from devices controller")
 
 def send_msg(msg):
     #send a message to the serial port and wait for the answer (or timeout)
@@ -512,12 +533,21 @@ answer_clock = 0
 
 time.sleep(1) #time for arduino serial port to settle down
 
-#server connection
+#server connection to jmri
+jmri_serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_add = "127.0.0.1" #FIXME
+jmri_serversocket.bind((server_add, config["network_port"]))
+debug("RR_duino_monitor listening on ",server_add," at port ",config["network_port"],"waiting for jmri connection")
+serversocket.listen(5)
+
+#server connection used by clients connected to the devices
 serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_add = "127.0.0.1" #FIXME
-serversocket.bind((server_add, config["network_port"]))
-debug("RR_duino_monitor listening on ",server_add," at port ",config["network_port"])
+serversocket.bind((server_add, config["network_port"]+1))
+debug("RR_duino_monitor listening on ",server_add," at port ",config["network_port"]+1,"waiting for devices controllers")
 serversocket.listen(5)
+
+devices_client = {}
 
 #load nodes from files and bring them online
 load_nodes()
