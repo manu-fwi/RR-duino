@@ -447,5 +447,3 @@ class RR_duino_node_desc:
 def hex_int(i):   #same as hex but withouth the leading "0x"
     return hex(i)[2:]
 
-print("bonjour")
-print(RR_duino_message.build_show_cmd(1).to_wire_message())

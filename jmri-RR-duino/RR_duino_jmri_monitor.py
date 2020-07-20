@@ -1,4 +1,4 @@
-import socket,time
+import socket,select,time
 import serial_bus
 import json,sys
 import RR_duino_messages as RR_duino
@@ -20,13 +20,13 @@ class RR_duino_node:
     def get_sensors_config(self):
         #get dict of sensors and turnouts
         debug("Getting sensors config from node at ",self.address)
-        answer = send_msg(RR_duino.RR_duino_message.build_load_from_eeprom(node.address))
+        answer = send_msg(RR_duino.RR_duino_message.build_load_from_eeprom(self.address))
         if answer is None or answer.get_error_code()!=0:
-            debug("node at",node.address,"was unable to save its config to eeprom")                              
+            debug("node at",self.address,"was unable to save its config to eeprom")                              
             return False
-        answer = send_msg(RR_duino.RR_duino_message.build_save_to_eeprom(node.address))
+        answer = send_msg(RR_duino.RR_duino_message.build_save_to_eeprom(self.address))
         if answer is None or answer.get_error_code()!=0:
-            debug("node at",node.address,"was unable to save its config to eeprom")                              
+            debug("node at",self.address,"was unable to save its config to eeprom")                              
             return False
         command =RR_duino.RR_duino_message.build_show_cmd(self.address)
         self.sensors={}
@@ -44,13 +44,12 @@ class RR_duino_node:
                 error = True
             else:
                 done = answer[-1].is_last_answer()
-        debug("unable to get sensors config from node at",node.address)
+        debug("unable to get sensors config from node at",self.address)
         if not error:
             for m in answer:
-                #concatenate dicts (python >=3.5)
-                {**self.sensors,**(m.get_list_of_sensors_config())}
+                self.sensors.update(m.get_list_of_sensors_config())
                 debug("Sensors list=",self.sensors)
-        if not pending_answer:  #reset ping time if no answer is pending, otherwise decrease by PING_TIMEOUT/5
+        if not pending_answers:  #reset ping time if no answer is pending, otherwise decrease by PING_TIMEOUT/5
             self.last_ping = time.time()
         else:
             self.last_ping -= RR_duino_node.PING_TIMEOUT/5
@@ -72,6 +71,7 @@ def RR_duino_to_JMRI(msg):
     returns None if an error occured, empty string if not to be sent to JMRI (eg an answer to a turnout cmd)
     or the converted message otherwise
     """
+
     if not msg.is_valid() or not msg.is_answer():
         debug("Invalid message or not an answer")
         return None
@@ -103,12 +103,13 @@ def RR_duino_to_JMRI(msg):
         #list of subbadd,value pairs
         result=""
         subadds_values = msg.get_list_of_values()
-        for sub_val in subbadds_values:
-            number = sub_value[0]
+        for sub_val in subadds_values:
+            number = sub_val[0]
             if msg.on_turnout() or node.sensors[sub_val[0]][1]==RR_duino.RR_duino_message.OUTPUT_SENSOR:
                 #make sure to translate the sensor number for turnouts or output sensors
                 number += 50
-            result += prefix+str(number)+","+str(sub_value[1])+";"
+            result += prefix+str(number)+","+str(sub_val[1])+";"
+        return result
     else:
         subadd,value = msg.get_value()
         if msg.on_turnout() or node.sensors[subadd][1]==RR_duino.RR_duino_message.OUTPUT_SENSOR:
@@ -200,11 +201,14 @@ def debug(*args):
     print(*args)
     
 def discover_next_node():
+    global waiting_answer_from_add,waiting_answer_from,answer_clock,last_dead_nodes_ping,discover_address,last_discover
+    
     #Check if we dont hog the bus bandwidth too much
     if len(online_nodes)>0:
         #we must wait between discovers, more so if we already have more nodes
         #to give them time to come online
-        if time.time()-last_discover<len(online_nodes)/2*ANSWER_TIMEOUT:
+        #debug(time.time()-last_discover,"?<?",len(online_nodes)*ANSWER_TIMEOUT*1.2)
+        if time.time()-last_discover<len(online_nodes)*ANSWER_TIMEOUT*1.2:
             #too soon just return
             return
     last_discover = time.time()
@@ -222,14 +226,16 @@ def discover_next_node():
         #all addresses have been tried already (max is 62)
         return
     #build a "version cmd" message to see if someone is responding
-    msg = RR_duino.RR_duino_message.build_version_cmd(node_to_ping.address)
+    debug("Trying address",discover_address,"for new node")
+    msg = RR_duino.RR_duino_message.build_version_cmd(discover_address)
     ser.send(msg.raw_message)
     waiting_answer_from = None
     waiting_answer_from_add = discover_address
     answer_clock = time.time()    
 
 def process():
-    global rcv_RR_messages,ser,waiting_answer_from,answer_clock,last_dead_nodes_ping
+    global rcv_RR_messages,waiting_answer_from,waiting_answer_from_add,answer_clock,last_dead_nodes_ping,last_discover
+    global message_to_send
 
     def find_oldest_ping(nodes_list):
         older_ping = time.time()
@@ -246,7 +252,8 @@ def process():
         #if we are already sending
         #not much we can do, let's wait for IO to proceed
         return
-    
+
+    #debug("Waiting on address",waiting_answer_from_add)
     if waiting_answer_from is not None or waiting_answer_from_add!=0:   #we are waiting for an answer
         if time.time()>answer_clock+ANSWER_TIMEOUT:
             if waiting_answer_from is None:
@@ -269,6 +276,7 @@ def process():
 
             if not RR_duino.RR_duino_message.is_complete_message(message_to_send):
                 return
+            debug("Serial message complete received!")
             #answer complete, first check if it is from a dead node or a new node that we just discovered
             msg = RR_duino.RR_duino_message(message_to_send)
             if waiting_answer_from is None: #new node just discovered
@@ -277,10 +285,10 @@ def process():
                     debug("Discovered node of address",waiting_answer_from_add,"gave an unexpected answer (should have replied to a version command) or the responding node does not have the correct address:",msg.get_address())
                 else:
                     #new node, build it using the version we got from it
-                    discovered_nodes.append(RR_duino_node(waiting_answer_from_add,msg.get_version()))
-                    #now get its config
-                    msg = RR_duino.RR_duino_message.build
-                    ser.send(msg)
+                    node = RR_duino_node(waiting_answer_from_add,msg.get_version())
+                    debug("New node discovered at",waiting_answer_from_add)
+                    discovered_nodes.append(node)
+
                 #unset address, we are not waiting anymore
                 waiting_answer_from_add = 0
                 
@@ -305,10 +313,24 @@ def process():
             waiting_answer_from = None
 
     #not waiting for an answer
+    #first let's see if we can bring discovered nodes online
+    if len(discovered_nodes) and time.time()-last_discover>len(online_nodes)*ANSWER_TIMEOUT:
+        node=discovered_nodes[0]
+        if not node.get_sensors_config():
+            debug("node at",node.address,"was unable to load its config from eeprom")
+        else:
+            online_nodes.append(node)
+            debug("node at",node.address,"is up and running")
+        discovered_nodes.pop(0)
+            
+        last_discover=time.time()
     #if auto-discover is set, try to find a new node
     if config["auto_discover"] and discover_address<=62:
         discover_next_node()
-        return
+        if waiting_answer_from_add!=0:
+            #trying to discover next node, we are done here
+            return
+        #debug("discover waited")
     #let's send a new command if there is any
     if rcv_RR_messages:
         msg = rcv_RR_messages.pop(0)
@@ -324,7 +346,7 @@ def process():
         #no ongoing I/O on the bus check the node with older ping
         node_to_ping = find_oldest_ping(online_nodes)
         if node_to_ping is not None:
-            debug("pinging node at",node.address)
+            debug("pinging node at",node_to_ping.address)
             node_to_ping.last_ping = time.time()
             msg = RR_duino.RR_duino_message.build_async_cmd(node_to_ping.address)
             ser.send(msg.raw_message)
@@ -352,7 +374,7 @@ def load_config(filename):
         return None
     #plug reasonable default values for secondary parameters
     if "serial_speed" not in config:
-        config["serial_speed"]=19200
+        config["serial_speed"]=38400
     #network port to listen to
     if "network_port" not in config:
         config["network_port"]=50010
@@ -371,18 +393,19 @@ def load_config(filename):
     return config
 
 def poll_net():
-    global rcv_messages,jmri_sock
+    timeout = 0.00001
+    global rcv_messages,jmri_sock,jmri_serversocket,serversocket
     #first check network connections
-    ready_to_read,ready_to_write,in_error = select.select([jmri_server_socket],[],[],timeout)
+    ready_to_read,ready_to_write,in_error = select.select([jmri_serversocket],[],[],timeout)
     if len(ready_to_read):
         jmri_sock,addr = jmri_serversocket.accept()
         address = (str(addr).split("'"))[1]
         debug("JMRI RR_duino_Jython script connected from", address)
         to_read.append(jmri_sock)
 
-    ready_to_read,ready_to_write,in_error = select.select([server_socket],[],[],timeout)
+    ready_to_read,ready_to_write,in_error = select.select([serversocket],[],[],timeout)
     if len(ready_to_read):
-        new_sock,addr = jmri_serversocket.accept()
+        new_sock,addr = serversocket.accept()
         address = (str(addr).split("'"))[1]
         debug("Devices controller connected from", address)
         #add client FIXME
@@ -394,7 +417,7 @@ def poll_net():
     if len(ready_to_read)>0:
         for sock in ready_to_read:
             try:
-                m = read_to_read[0].recv(200).decode('utf-8')
+                m = sock.recv(200).decode('utf-8')
             except socket.error:
                 debug("recv error")
                 #debug(len(m)," => ",m)
@@ -414,6 +437,7 @@ def poll_net():
                 decode_messages()
             else:
                 debug("message from devices controller")
+                #FIXME
 
 def send_msg(msg):
     #send a message to the serial port and wait for the answer (or timeout)
@@ -447,7 +471,7 @@ def send_msg(msg):
     return None
     
 def load_nodes():
-    global online_nodes
+    global online_nodes,discovered_nodes
     debug("loading RR_duino nodes with addresse",config["nodes_addresses"])
 
     #try all addresses and ask each responding node to load its version
@@ -465,8 +489,8 @@ def load_nodes():
         #prepare to discard node in case of any error
         if not node.get_sensors_config():
             debug("node at",node.address,"was unable to load its config from eeprom")
-            onlines_nodes.append(node)
         else:
+            online_nodes.append(node)
             debug("node at",node.address,"is up and running")
     #remove the node that were not able to go online correctly
     discovered_nodes = []
@@ -528,7 +552,7 @@ message_to_send=b""   #last incomplete message from the serial port
 
 #variables used to know if a node should respond and which one
 waiting_answer_from = None #this will be None if we are trying to discover a new node
-wating_answer_from_add = 0 #corresponding address, useful when you are trying to discover a new node
+waiting_answer_from_add = 0 #corresponding address, useful when you are trying to discover a new node
 answer_clock = 0
 
 time.sleep(1) #time for arduino serial port to settle down
@@ -538,7 +562,7 @@ jmri_serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_add = "127.0.0.1" #FIXME
 jmri_serversocket.bind((server_add, config["network_port"]))
 debug("RR_duino_monitor listening on ",server_add," at port ",config["network_port"],"waiting for jmri connection")
-serversocket.listen(5)
+jmri_serversocket.listen(5)
 
 #server connection used by clients connected to the devices
 serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -549,8 +573,6 @@ serversocket.listen(5)
 
 devices_client = {}
 
-#load nodes from files and bring them online
-load_nodes()
 #list of dead nodes (these were online and died, we keep them and try to see if they wake up)
 dead_nodes=[]
 last_dead_nodes_ping = time.time()
@@ -566,6 +588,9 @@ last_discover = 0
 to_read=[serversocket]
 #socket to jmri
 jmri_sock = None
+
+#load nodes from files and bring them online
+load_nodes()
 
 while True:
     #network
