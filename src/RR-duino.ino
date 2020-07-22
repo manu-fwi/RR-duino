@@ -1315,7 +1315,7 @@ bool check_del_cfgcmd_2nd_stage()
     }
     return false;
   }
-  // Read or write on one subaddress only
+  // One subaddress only
   if (cmd_pos == 3) { // Complete!
     if (command_buf[0] & (1 << CMD_SENS_TURN_BV)) {
       int err = delete_one_turnout(command_buf[2]);
