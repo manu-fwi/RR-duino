@@ -6,7 +6,7 @@
 #include <Servo.h>
 
 // *************** globals *******************
-HardwareSerial& to_bus = SERIAL_PORT;
+Serial_& to_bus = Serial;
 byte data_dir_pin = 3; // 255 to disable for normal Serial port
 bool save_cfg_to_eeprom = false;
 
@@ -1061,7 +1061,7 @@ void process_turnouts()
         servos[cur->status & 0x01F].attach(cur->servo_pin);
       }
       else if (((times[cur->status & 0x01F] == 0) && !in_range(cur->current_pos,cur->straight_pos,cur->thrown_pos))
-              || ((times[cur->status & 0x01F] != 0) && (times[cur->status & 0x01F]+REPOS_TURNOUT_TIME<millis()))) {
+              || ((times[cur->status & 0x01F] != 0) && (millis()-times[cur->status & 0x01F]<REPOS_TURNOUT_TIME))) {
         // Movement is done, detach the servo
         servos[cur->status & 0x1F].detach();
         cur->status = (cur->status &0xE0 & ~(1 << TURNOUT_MOV_BV)) | NO_SERVO;  // unset servo index and movement bit
@@ -1315,7 +1315,7 @@ bool check_del_cfgcmd_2nd_stage()
     }
     return false;
   }
-  // One subaddress only
+  // Read or write on one subaddress only
   if (cmd_pos == 3) { // Complete!
     if (command_buf[0] & (1 << CMD_SENS_TURN_BV)) {
       int err = delete_one_turnout(command_buf[2]);
@@ -1472,7 +1472,7 @@ void loop() {
   }
   // Blink if not in address mode
   if (!address_mode) {
-    if (millis()>last_blink+300) {
+    if (millis()-last_blink>300) {
       digitalWrite(13,blinking);
       blinking = (blinking==HIGH) ? LOW:HIGH;
       last_blink = millis();

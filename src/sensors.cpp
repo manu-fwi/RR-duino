@@ -195,7 +195,7 @@ bool check_all_sensors()
           current->status &= ~(1 << SENSOR_CHK_STATE_BV);
       } else {
         // Same state, check if we can validate it
-        if (current->last_time && (millis()>current->last_time+SENSOR_DEBOUNCE)) {
+        if (current->last_time && (millis()-current->last_time>SENSOR_DEBOUNCE)) {
           byte change = (current->status&0x01) ^ temp;
           DEBUG(F("CHANGING STABILIZED "));
           DEBUGLN(current->status&0x01);
