@@ -6,7 +6,7 @@
 #include <Servo.h>
 
 // *************** globals *******************
-Serial_& to_bus = Serial;
+HardwareSerial& to_bus = Serial;
 byte data_dir_pin = 3; // 255 to disable for normal Serial port
 bool save_cfg_to_eeprom = false;
 

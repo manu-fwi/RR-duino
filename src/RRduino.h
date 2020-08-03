@@ -14,7 +14,7 @@
 #define DEBUGLN(msg) noop()
 #undef USE_DEBUG
 
-extern Serial_& to_bus;
+extern HardwareSerial& to_bus;
 extern byte data_dir_pin;  // Dir pin, 255 means normal serial
 extern byte address;
 extern bool save_cfg_to_eeprom;
