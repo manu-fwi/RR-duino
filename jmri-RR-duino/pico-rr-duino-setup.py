@@ -3,7 +3,7 @@ from picotui.context import Context
 from picotui.screen import Screen
 from picotui.widgets import *
 from picotui.defs import *
-
+import RR_duino_messages as RRduino
 
 ANSWER_TIMEOUT = 5
 TURNOUT_TUNE_TIMEOUT = 5
@@ -31,19 +31,21 @@ def eeprom_status_str():
 def set_eeprom_status(eeprom_status):
     eeprom_status.t=eeprom_status_str()
     
-def wait_for_answer(min_length):
+def wait_for_answer(length):
     m=b""
     beg = time.time()
-    while (len(m)<min_length or m[-1]&0x80==0) and time.time()<beg+ANSWER_TIMEOUT:
+    #print("wait for answser...",end="")
+    while (len(m)<length) and time.time()<beg+ANSWER_TIMEOUT:
         s.process_IO()
         if s.available():
             m+=s.read()
+            #print(RRduino.hex_int(m[-1]),end=" ")
             beg = time.time()
     if len(m)==0:
         return (None,"Device not responding")
-  
-    elif m[-1]&0x7F!=0:
-        return (None,"Error "+str(m[-1]&0x7F))
+
+    elif (m[-1]&0x80!=0) and (m[-1]&0x0F!=0):
+        return (None,"Error "+str(m[-1]&0x0F))
  
     else:
         return (m[3:],"OK")
@@ -80,8 +82,8 @@ def wait_for_show_answer(turnouts=False):
     if len(m)==0:
         return (None,"Device not responding")
   
-    elif m[-1]&0x7F!=0:
-        return (None,"Error "+str(m[-1]&0x7F))
+    elif m[-1]&0x0F!=0:
+        return (None,"Error "+str(m[-1]&0x0F))
  
     else:
         return (m,"OK")
@@ -103,7 +105,8 @@ def get_address():
 def load_eeprom_clicked(b):
     if check_connection():
         s.send(bytes((0xFF,0b10111001,address)))
-        answer,status = wait_for_answer(3)
+        answer,status = wait_for_answer(4)
+        time.sleep(1)
         set_status(status)
         main_data.eeprom_state[0] = answer is not None
         set_eeprom_status(main_data.eeprom_status)
@@ -113,12 +116,12 @@ def load_eeprom_clicked(b):
 def clear_eeprom_clicked(b):
     if check_connection():
         s.send(bytes((0xFF,0b11111001,address)))
-        set_status(wait_for_answer(3)[1])
+        set_status(wait_for_answer(4)[1])
         
 def store_eeprom_clicked(b):
     if check_connection():
         s.send(bytes((0xFF,0b10101001,address)))
-        answer,status = wait_for_answer(3)
+        answer,status = wait_for_answer(4)
         main_data.eeprom_state[1] = answer is not None
         set_status(status)
         set_eeprom_status(main_data.eeprom_status)
@@ -127,11 +130,11 @@ def store_eeprom_clicked(b):
 def set_add():
     #Set address
     s.send(bytes((0xFF,0b10011001,address)))
-    return wait_for_answer(3)[1]
+    return wait_for_answer(4)[1]
 
 def get_version():
     s.send(bytes((0xFF,0b10001001,address)))
-    answer,msg = wait_for_answer(3)
+    answer,msg = wait_for_answer(5)
     if answer is not None:
         main_data.device_version_label.t=str(answer[0])
         main_data.device_version = main_data.device_version_label.t
@@ -144,36 +147,6 @@ def async_events(cmd):
     if add is not None:
         c = 0b00000101
         s.send(bytes((0xFF,c,add)))
-
-
-def read_cmd(cmd):
-    add = check_add(cmd[1])
-    if add is not None:
-        c = 0b00000001
-        if cmd[2]=='A':
-            subadd = None
-            c |= (1<<6)
-            add |= (1<<6)
-        else:
-            subadd = int(cmd[2])
-        if cmd[3]=="T":
-            c |= (1<<4)
-        if subadd is not None:
-            s.send(bytes((0xFF,c,add,subadd)))
-        else:
-            s.send(bytes((0xFF,c,add)))
-
-def write_cmd(cmd):
-    add = check_add(cmd[1])
-    if add is not None:
-        subadd = int(cmd[2])
-        if cmd[4]=="1":
-            subadd |= (1<<6)
-        c = 0b00100001
-        if cmd[3]=="T":
-            c |= (1<<4)
-        s.send(bytes((0xFF,c,add,subadd)))
-
 
 class DialogNew(Dialog):
     def __init__(self, x, y, w=0, h=0, title=""):
@@ -255,7 +228,13 @@ def sensor_clicked(b):
     next_dialog = sensor_dialog
     main_data.dialog_w.exit = True
 
-
+def test_clicked(b):
+    global next_dialog,main_data
+    if not check_connection():
+        return
+    next_dialog = test_dialog
+    main_data.dialog_w.exit = True
+    
 class MainDialogData:
     def __init__(self):
         self.device_status = self.eeprom_status = None
@@ -340,6 +319,10 @@ def main_dialog():
     sensor_button = WButton(17,"Sensors setup")
     sensor_button.on("click",sensor_clicked)
     main_data.dialog_w.add(21,11,sensor_button)
+    test_button = WButton(17,"Test setup")
+    test_button.on("click",test_clicked)
+    main_data.dialog_w.add(39,11,test_button)
+    
     main_data.dialog_w.loop()
 
 def pad_int(int,nb):
@@ -417,7 +400,7 @@ def sensor_commit_clicked(b):
         return
     io_type= sensor_data.io.get() #0=input, 1=input w/ pullup, 2=output
     config_sensor(subadd,pin,io_type)
-    m,code = wait_for_answer(3)
+    m,code = wait_for_answer(4)
     if m is None:
         sensor_data.device_status.t = code
         #error
@@ -436,7 +419,7 @@ def sensor_delete_clicked(b):
     subadd = int(sensor[7:9])
 
     s.send(bytes((0xFF,0b10100001,address,subadd)))
-    m,code = wait_for_answer(3)
+    m,code = wait_for_answer(4)
     if m is None:
         #error
         sensor_data.device_status.t = code
@@ -490,6 +473,97 @@ def sensor_dialog():
     sensor_data.dialog_w.add(27,12,button)
 
     sensor_data.dialog_w.loop()
+    next_dialog = None
+
+class TestDialogData:
+    def __init__(self):
+        self.subadd_entry =None
+        self.io= self.value = None
+        self.device_status = None
+        self.dialog_w = None
+
+def test_get_values():
+    global test_data
+    error = False
+    try:
+        subadd = int(test_data.subadd_entry.get())
+    except:
+        error = True
+
+    if subadd<=0 or subadd>=63 or error:
+        return None
+    io_type= test_data.io.get()  #0=sensor 1=turnout
+    value = test_data.value.get() #0=OFF 1=ON
+    return (subadd,io_type,value)
+       
+def test_read_clicked(b):
+    global test_data
+
+    values = test_get_values()
+    if values is None:
+        return
+
+    subadd = values[0]
+    io_type= values[1]
+    
+    msg = RRduino.RR_duino_message.build_simple_rw_cmd(address,subadd,True,io_type==0)
+    s.send(msg.raw_message)
+    m,code = wait_for_answer(4)
+    test_data.device_status.t = code
+    test_data.device_status.redraw()
+    if m is not None:  #m[0] is the subaddress with the value encoded
+        if (m[0] & 0x40)!=0:
+            test_data.value.choice = 1
+        else:
+            test_data.value.choice = 0
+        test_data.value.redraw()
+    
+def test_write_clicked(b):
+    global test_data,address
+
+    values = test_get_values()
+    if values is None:
+        return
+
+    subadd = values[0]
+    value = values[2]
+    msg = RRduino.RR_duino_message.build_simple_rw_cmd(address,subadd,False,values[1]==0,value)
+    s.send(msg.raw_message)
+    m,code = wait_for_answer(4)
+
+    test_data.device_status.t = code
+    test_data.device_status.redraw()
+    
+def test_dialog():
+    global test_data
+
+    Screen.attr_color(C_WHITE, C_BLUE)
+    Screen.cls()
+    Screen.attr_reset()
+    test_data.dialog_w = DialogNew(1, 1, 70, 20,title="RR-DUINO TEST SETUP")
+
+    test_data.dialog_w.add(1,1,WFrame(58,3,"Device setup address "+str(address)))
+
+    test_data.dialog_w.add(2,2,"Status:")
+    test_data.device_status = WLabel("Unknown state",22)
+    test_data.dialog_w.add(10,2,test_data.device_status)
+
+    test_data.dialog_w.add(1,4,WFrame(25,9,"Test setup"))
+    test_data.dialog_w.add(2,5,"Subaddress:")
+    test_data.subadd_entry=WTextEntry(5,"0")
+    test_data.dialog_w.add(14,5,test_data.subadd_entry)
+    test_data.io = WRadioButton(["sensor","turnout"])
+    test_data.dialog_w.add(2,7,test_data.io)
+    test_data.value = WRadioButton(["OFF","ON"])
+    test_data.dialog_w.add(2,9,test_data.value)
+    test_read_button = WButton(10,"Read")
+    test_read_button.on("click",test_read_clicked)
+    test_data.dialog_w.add(2,11,test_read_button)
+    test_write_button = WButton(10,"Write")
+    test_write_button.on("click",test_write_clicked)
+    test_data.dialog_w.add(13,11,test_write_button)
+
+    test_data.dialog_w.loop()
     next_dialog = None
 
 class TurnoutDialogData:
@@ -575,7 +649,7 @@ def turnout_commit_clicked(b):
                 return
                 
     config_turnout(subadd,servo_pin,straight_pos,thrown_pos,pulse_pins,relay_pins)
-    m,code = wait_for_answer(3)
+    m,code = wait_for_answer(4)
     if m is None:
         turnout_data.device_status.t = code
         #error
@@ -670,7 +744,7 @@ def fine_tune_turnout(pos):
     turnout_str = turnout_data.list_wg.items[turnout_data.list_wg.choice]
     subadd=int(turnout_str[4:6])
     s.send(bytes((0xFF,0b11101001,address,subadd,pos)))
-    m,code=wait_for_answer(3)
+    m,code=wait_for_answer(4)
     turnout_data.device_status.t=code
     if m is not None:
         turnout_data.fine_tune_label.t = pad_int(pos,3)
@@ -692,7 +766,7 @@ def turnout_delete_clicked(b):
     subadd = int(turnout[4:6])
     
     s.send(bytes((0xFF,0b10110001,address,subadd)))
-    m,code = wait_for_answer(3)
+    m,code = wait_for_answer(4)
     if m is None:
         #error
         turnout_data.device_status.t = code
@@ -826,6 +900,7 @@ next_dialog = None
 main_data = MainDialogData()
 sensor_data=SensorDialogData()
 turnout_data=TurnoutDialogData()
+test_data = TestDialogData()
 while True:
     with Context():
         main_dialog()

@@ -18,6 +18,14 @@ class serial_bus:
         if self.ser_port.is_open:
             self.ser_port.close()
 
+    def set_port(self,port):
+        self.stop()
+        self.ser_port.port = port
+
+    def set_baud(self,baud):
+        self.stop()
+        self.ser_port.baudrate = baud
+
     def send(self,msg): #msg must be bytes array
         if len(self.to_send)>0:
             print("overrun of the sending buffer")
