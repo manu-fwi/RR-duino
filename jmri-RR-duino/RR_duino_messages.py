@@ -29,6 +29,7 @@ class RR_duino_message:
     CMD_CLEAR_EEPROM = 7
     
     #address byte special bits positions
+    ADD_TABLE_BIT=7
     ADD_LIST_BIT=6
     
     #subaddress byte special bits positions
@@ -105,6 +106,9 @@ class RR_duino_message:
         #returns the special config code (cf top of the class)
         #use it only if the command is a special config command
         return (self.raw_message[1] >> RR_duino_message.CMD_SPECIAL_CONFIG_CODE_POS ) & RR_duino_message.CMD_SPECIAL_CONFIG_CODE_MASK
+
+    def is_show_table(self):
+        return self.raw_message[2] & (1 << RR_duino_message.ADD_TABLE_BIT)
     
     def is_special_config_cmd(self):
         #returns True if this is a special config command
@@ -318,10 +322,12 @@ class RR_duino_message:
         return RR_duino_message(bytes((0xFF,0b10001001,add)))
 
     @staticmethod
-    def build_show_cmd(add, on_turnout=False):
+    def build_show_cmd(add, on_turnout=False,table=False):
         c = 0b11001001
         if on_turnout:
             c |= (1 << RR_duino_message.CMD_SENSOR_TURNOUT_BIT)
+        if table:
+            add |= 1 << RR_duino_message.ADD_TABLE_BV
         return RR_duino_message(bytes((0xFF,c,add)))
 
     @staticmethod
@@ -350,8 +356,7 @@ class RR_duino_message:
                 return msg.get_special_config()!=CMD_TURNOUT_FINE_TUNE
             elif msg.is_read_cmd() and msg.is_all(): #read all command
                 return True
-            return False
-                
+            return False                
         
         def sensors_config_list_complete(msg):
             #sensors config are 2 bytes long, so check if we have a full number of config plus one byte
@@ -393,18 +398,12 @@ class RR_duino_message:
         
         #treat the answer cases (must finish by 0x8x)
         if message.is_answer():
-            #exceptions: the show and version commands can have bytes with MSB!=0 before the end
-            if special_config is None or (special_config!=RR_duino_message.CMD_VERSION
-                                          and special_config!=RR_duino_message.CMD_SHOW_SENSORS
-                                          and special_config!=RR_duino_message.CMD_SHOW_TURNOUTS):
+            #exceptions: the version commands can have bytes with MSB!=0 before the end
+            if special_config is None or (special_config!=RR_duino_message.CMD_VERSION):
                 return msg[-1] & 0x80 != 0
             #Treat the case of CMD_VERSION
             if special_config == RR_duino_message.CMD_VERSION:
                 return len(msg)>=5 and (msg[-1] & 0x80 != 0)
-            #Treat the CMD_SHOW_SENSORS:
-            if special_config == RR_duino_message.CMD_SHOW_SENSORS:
-                return sensors_config_list_complete(message)
-            return turnouts_config_list_complete(message)
         #it is a command of length >=4
         #sensors and turnouts config
         if message.is_config_cmd() and special_config is None and message.raw_message[1] & (1 << CMD_CONFIG_DEL_BIT)==0:
