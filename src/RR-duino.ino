@@ -243,7 +243,7 @@ byte cmd_pos = 0;
 bool new_command = false;
 byte command_buf[MAX_CMD_LEN];
 
-void set_data_dir(bool write=true)
+void set_data_dir(bool write)
 {
   if (data_dir_pin!=255) {
     if (write)
@@ -679,8 +679,27 @@ byte show_one_turnout(turnout_cfg_t * turn, byte * data)
   return 4;
 }
 
-void show_sensors_cmd(byte limit)
+void show_sensors_table()
 {
+  command_buf[0] &= ~(1 << CMD_CMD_ANSWER_BV); // Unset command bit ( this is an answer )
+  memset(command_buf+2,0,18);
+  for (sensor_cfg_t * sensor = sensor_cfg_head;sensor;sensor=sensor->next) {
+    byte byte_pos = (sensor->subadd-1)/7;
+    byte bit_pos = (sensor->subadd-1) % 7;
+    if ((sensor->status & (1 << SENSOR_IO_BV))==0) // Output sensor, second table
+      byte_pos+=9;
+    command_buf[byte_pos] |= 1 << bit_pos;
+  }
+  command_buf[20]=0x80;
+  send_one_msg(command_buf,21);
+}
+
+void show_sensors_cmd()
+{
+  if (command_buf[1] & (1 << ADD_TABLE_BV)) {
+    show_sensors_table();
+    return; 
+  }
   if (!answers_head)  // if no answer is waiting this means it is the first show command
   { // build the answers
     byte pos = 2; // beginning of the payload of the command
@@ -709,8 +728,25 @@ void show_sensors_cmd(byte limit)
   send_answers(); // send them; some might not be sent (depending on the limit), they will be sent on the next show command
 }
 
-void show_turnouts_cmd(byte limit)
+void show_turnouts_table()
 {
+  command_buf[0] &= ~(1 << CMD_CMD_ANSWER_BV); // Unset command bit ( this is an answer )
+  memset(command_buf+2,0,9);
+  for (turnout_cfg_t * turnout = turnout_cfg_head;turnout;turnout=turnout->next) {
+    byte byte_pos = (turnout->subadd-1)/7;
+    byte bit_pos = (turnout->subadd-1) % 7;
+    command_buf[byte_pos] |= 1 << bit_pos;
+  }
+  command_buf[11]=0x80;
+  send_one_msg(command_buf,12);
+}
+
+void show_turnouts_cmd()
+{
+  if (command_buf[1] & (ADD_TABLE_BV)) {
+    show_turnouts_table();
+    return;
+  }
   if (!answers_head)  // if no answer is waiting this means it is the first show command
   { // build the answers
     byte pos = 2; // beginning of the payload of the command
@@ -1405,7 +1441,7 @@ bool check_cmd_1st_stage()
   if (command_buf[0] & (1 << CMD_ASYNC_BV)) {
     // ASYNC command
     async_cmd();
-    return true;  
+    return true;
   }
   if (command_buf[0] & (1 << CMD_CFGCMD_BV))  // Config commands
   {
@@ -1429,11 +1465,11 @@ bool check_cmd_1st_stage()
            return true;
         case 0b100:
           // show sensors command
-          show_sensors_cmd(command_buf[2]);          
+          show_sensors_cmd();
           return true;
         case 0b101:
           // show turnouts command
-          show_turnouts_cmd(command_buf[2]);
+          show_turnouts_cmd();
           return true;
 
         case 0b110:

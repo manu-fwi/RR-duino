@@ -36,6 +36,7 @@ extern bool save_cfg_to_eeprom;
 #define CMD_CMD_ANSWER_BV 0
 
 // Define for the address bits positions
+#define ADD_TABLE_BV 7
 #define ADD_LIST_BV 6
 
 // Define for the subaddress bits positions
