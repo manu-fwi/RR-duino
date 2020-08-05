@@ -7,8 +7,8 @@
 //#define SERIAL_PORT Serial
 
 // DEBUG MACRO
-//#define DEBUG(msg) Serial.print(msg)
-//#define DEBUGLN(msg) Serial.println(msg)
+//#define DEBUG(msg) Serial1.print(msg)
+//#define DEBUGLN(msg) Serial1.println(msg)
 //#define USE_DEBUG
 #define DEBUG(msg) noop()
 #define DEBUGLN(msg) noop()
@@ -105,6 +105,6 @@ void set_data_dir(bool write=true);
   TIMSK2 |= (1<<OCIE2A);\
   OCR2A= 160;\
 })
-#endif __AVR_ATmega32u4
+#endif // __AVR_ATmega32u4
 
 #endif // RRDUINO_H

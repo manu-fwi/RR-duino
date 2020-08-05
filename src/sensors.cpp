@@ -205,14 +205,12 @@ bool check_all_sensors()
           if (change) {
             current->status = (current->status & 0xFE)+temp; // Validate the new state
             //FIXME
-             DEBUG(F("CHNG STATE="));
+            DEBUG(F("CHNG STATE="));
             DEBUGLN(current->status & (1<<SENSOR_CHNG_STATE_BV));
             if ((current->status & (1<<SENSOR_CHNG_STATE_BV))==0)
             {
               current->status |= (1 << SENSOR_CHNG_STATE_BV);
               sensors_chng_state++;
-              current->last_time = 0; // Special value that says we have detected a change in the state
-              // No need to go on
             }
           }
         }

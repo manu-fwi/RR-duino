@@ -138,7 +138,7 @@ bool load_turnouts()
 bool load_sensors()
 {
   if (address==0)
-    return;
+    return false;
   DEBUGLN("loading sensors...");    
   eeprom_sensor_end = EEPROM.length()-CFG_SENSOR_SIZE;
   sensors_chng_state=0; // FIXME
@@ -200,7 +200,7 @@ void setup() {
   INIT_TIMER();
   //clear_eeprom(false);
   #ifdef USE_DEBUG
-  Serial.begin(115200);
+  Serial1.begin(115200);
   #endif
   DEBUGLN("Started");
   to_bus.begin(38400);
@@ -219,8 +219,8 @@ void setup() {
     EEPROM.write(2,0);
     EEPROM.write(EEPROM.length()-CFG_SENSOR_SIZE,0);
   } else version_nb = EEPROM.read(1);
-  if (version_nb=255)
-    version_nb=0;;
+  if (version_nb==255)
+    version_nb=0;
   if (address==0) {
     eeprom_turn_end = 2;
     return;
@@ -603,7 +603,7 @@ void read_all_sensors()
     }
     if (sensor->status & 0x01)
       command_buf[cmd_pos] |= (1 << bit_pos);
-    bit_pos;
+    bit_pos++;
   }
   command_buf[++cmd_pos]=0x80;
   send_one_msg(command_buf, cmd_pos+1);
@@ -1145,9 +1145,9 @@ bool check_turnout_fine_cmd_2nd_stage()
   if ((command_buf[3]>=10) && (command_buf[3]<=170)) { // reasonable values
     DEBUG("FINE TUNE pin=");
     DEBUGLN(turn->servo_pin);
-    if ((turn->status & 0x1F!=0) &&(turn->status & 0x1F!=NO_SERVO)) // Check if it was attached to a "normal" servo
+    if (((turn->status & 0x1F)!=0) &&((turn->status & 0x1F)!=NO_SERVO)) // Check if it was attached to a "normal" servo
       servos[turn->status & 0x1F].detach();
-    if (turn->status & 0x1F!=0) { // It was not already doing fine tuning so attach it to servos[0]
+    if ((turn->status & 0x1F)!=0) { // It was not already doing fine tuning so attach it to servos[0]
       DEBUG("NOT ALREADY FINE TUNING ");
       servos[0].detach();
       // Find the servo which was doing fine tuning
@@ -1169,7 +1169,7 @@ bool check_turnout_fine_cmd_2nd_stage()
       DEBUGLN(turn->servo_pin);
     }
     servos[0].write(command_buf[3]); //set position
-  } else if ((command_buf[3]==0) && (turn->status & 0x1F==0) ) // pos=0 means detach servo
+  } else if ((command_buf[3]==0) && ((turn->status & 0x1F)==0) ) // pos=0 means detach servo
     servos[0].detach();
   send_simple_answer(0);
   return true;
