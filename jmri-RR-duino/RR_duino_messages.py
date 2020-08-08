@@ -327,7 +327,7 @@ class RR_duino_message:
         if on_turnout:
             c |= (1 << RR_duino_message.CMD_SENSOR_TURNOUT_BIT)
         if table:
-            add |= 1 << RR_duino_message.ADD_TABLE_BV
+            add |= 1 << RR_duino_message.ADD_TABLE_BIT
         return RR_duino_message(bytes((0xFF,c,add)))
 
     @staticmethod
@@ -353,7 +353,7 @@ class RR_duino_message:
             #it is not an answer
             if msg.is_special_config_cmd():
                 #it is a special config, check the codes
-                return msg.get_special_config()!=CMD_TURNOUT_FINE_TUNE
+                return msg.get_special_config()!=RR_duino_message.CMD_TURNOUT_FINE_TUNE
             elif msg.is_read_cmd() and msg.is_all(): #read all command
                 return True
             return False                

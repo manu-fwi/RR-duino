@@ -681,6 +681,7 @@ byte show_one_turnout(turnout_cfg_t * turn, byte * data)
 
 void show_sensors_table()
 {
+  DEBUGLN("SHOW SENSORS TABLE");
   command_buf[0] &= ~(1 << CMD_CMD_ANSWER_BV); // Unset command bit ( this is an answer )
   memset(command_buf+2,0,18);
   for (sensor_cfg_t * sensor = sensor_cfg_head;sensor;sensor=sensor->next) {
@@ -688,7 +689,7 @@ void show_sensors_table()
     byte bit_pos = (sensor->subadd-1) % 7;
     if ((sensor->status & (1 << SENSOR_IO_BV))==0) // Output sensor, second table
       byte_pos+=9;
-    command_buf[byte_pos] |= 1 << bit_pos;
+    command_buf[byte_pos+2] |= 1 << bit_pos;
   }
   command_buf[20]=0x80;
   send_one_msg(command_buf,21);
@@ -730,12 +731,13 @@ void show_sensors_cmd()
 
 void show_turnouts_table()
 {
+  DEBUGLN("SHOW TURNOUTS TABLE");
   command_buf[0] &= ~(1 << CMD_CMD_ANSWER_BV); // Unset command bit ( this is an answer )
   memset(command_buf+2,0,9);
   for (turnout_cfg_t * turnout = turnout_cfg_head;turnout;turnout=turnout->next) {
     byte byte_pos = (turnout->subadd-1)/7;
     byte bit_pos = (turnout->subadd-1) % 7;
-    command_buf[byte_pos] |= 1 << bit_pos;
+    command_buf[byte_pos+2] |= 1 << bit_pos;
   }
   command_buf[11]=0x80;
   send_one_msg(command_buf,12);
@@ -743,7 +745,7 @@ void show_turnouts_table()
 
 void show_turnouts_cmd()
 {
-  if (command_buf[1] & (ADD_TABLE_BV)) {
+  if (command_buf[1] & (1 << ADD_TABLE_BV)) {
     show_turnouts_table();
     return;
   }
