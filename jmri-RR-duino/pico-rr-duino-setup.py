@@ -273,6 +273,45 @@ def backup_dialog():
     backup_data.dialog_w.loop()
     next_dialog = None
 
+def restore_dialog():
+    global restore_data
+
+    Screen.attr_color(C_WHITE, C_BLUE)
+    Screen.cls()
+    Screen.attr_reset()
+    restore_data.dialog_w = DialogNew(1, 1, 70, 20,title="RR-DUINO NODE RESTORE")
+
+    restore_data.dialog_w.add(1,1,WFrame(58,4,"Device setup address "+str(address)))
+
+    restore_data.dialog_w.add(2,2,"Status:")
+    if main_data.status is None:
+        s="Unknown state"
+    else:
+        s=main_data.status
+    restore_data.device_status = WLabel(s,22)
+    restore_data.dialog_w.add(10,2,restore_data.device_status)
+    restore_data.dialog_w.add(2,3,"EEPROM Status:")
+    restore_data.eeprom_status = WLabel(eeprom_status_str(),22)
+    restore_data.dialog_w.add(16,3,restore_data.eeprom_status)
+
+    restore_data.dialog_w.add(1,5,WFrame(68,16,"Restore"))
+    restore_data.dialog_w.add(2,6,"Restore file:")
+    restore_data.file_entry=WTextEntry(53,"")
+    restore_data.dialog_w.add(15,6,restore_data.file_entry)
+    restore_load_button = WButton(66,"Load restore file")
+    restore_load_button.on("click",restore_load_clicked)
+    restore_data.dialog_w.add(2,8,restore_load_button)
+    restore_node_button = WButton(66,"Restore selected node")
+    restore_node_button.on("click",restore_node_clicked)
+    restore_data.dialog_w.add(2,19,restore_node_button)
+    restore_data.warning=WLabel("File name not set                                               ")
+    restore_data.dialog_w.add(2,7,restore_data.warning)
+    restore_data.list_wg=WListBox(64,7,[])
+    restore_data.dialog_w.add(2,10,WFrame(66,9,"Nodes"))
+    restore_data.dialog_w.add(3,11,restore_data.list_wg)
+    restore_data.dialog_w.loop()
+    next_dialog = None
+
 def backup_clicked(b):
     global next_dialog,main_data,backup_data
     backup_data.write_click = 0
@@ -330,7 +369,91 @@ def backup_write_clicked(b):
     except:
         backup_data.warning.t = "Error while writing file!"
     backup_data.warning.redraw()
-    
+
+def restore_load_clicked(b):
+    global restore_data
+    filename = restore_data.file_entry.get()
+    if len(filename)==0:
+        restore_data.warning.t = "File name not set"
+        restore_data.warning.redraw()
+        return
+    try:
+        with open(filename,"r") as cfg_file:
+            restore_data.config = json.load(cfg_file)
+    except:
+        restore_data.config = {}
+    restore_data.warning.t = "File loaded successfully"
+    restore_data.warning.redraw()
+
+    restore_data.nodes_list = []
+    restore_data.nodes_names=[]
+    for nodename in restore_data.config:
+        line = nodename[:41]+" "*(41-len(nodename))+"|"+pad_int(len(restore_data.config[nodename]["sensors"]),2)+" sensors|"
+        line += pad_int(len(restore_data.config[nodename]["turnouts"]),2)+" turnouts"
+        restore_data.nodes_list.append(line)
+        #store the full name for later use
+        restore_data.nodes_names.append(nodename)
+    restore_data.list_wg.items = restore_data.nodes_list
+    restore_data.list_wg.set_lines(restore_data.list_wg.items)
+    restore_data.list_wg.redraw()
+
+def restore_node_clicked(b):
+    global restore_data
+    #send the config to the node we are connected to
+    #extract node name from the selected line
+    nodename=restore_data.nodes_names[restore_data.list_wg.choice]
+
+    restore_data.warning.t = "Uploading sensors configuration..."
+    restore_data.warning.redraw()
+    #first restore sensors
+    for line in restore_data.config[nodename]["sensors"]:
+        subadd = int(line[7:9].lstrip())
+        pin = int(line[14:17].lstrip())
+        if line[18]=='I':
+            #input sensor check pullup
+            if len(line)<21:
+                io_type = 0 #input no pull up
+            else:
+                io_type = 1 #input with pull up
+        else:
+            io_type = 2
+        config_sensor(subadd,pin,io_type)
+        m,code = wait_for_answer(4)
+        if m is None:
+            restore_data.device_status.t = code
+            restore_data.device_status.redraw()
+            return
+    restore_data.warning.t = "Uploading turnouts configuration..."
+    restore_data.warning.redraw()
+    #then restore turnouts
+    for line in restore_data.config[nodename]["turnouts"]:
+        subadd = int(line[4:6].lstrip())
+        pin = int(line[9:12].lstrip())
+        pos1 = int(line[15:18].lstrip())
+        pos2 = int(line[21:24].lstrip())
+        s = line[28:31].lstrip()
+        if s:
+            relay_pins=[int(s)]
+        else:
+            relay_pins = [254]
+        s = line[35:38].lstrip()
+        if s:
+            relay_pins.append(int(s))
+        else:
+            relay_pins.append(254)
+
+        pulse_pins=(line[39:]=='P')
+            
+        config_turnout(subadd,pin,pos1,pos2,pulse_pins,relay_pins)
+        m,code = wait_for_answer(4)
+        if m is None:
+            restore_data.device_status.t = code
+            restore_data.device_status.redraw()
+            return
+    restore_data.warning.t = "Node fully restored"
+    restore_data.warning.redraw()
+   
+        
 class BackupDialogData:
     def __init__(self):
         self.dialog_w = None
@@ -340,6 +463,16 @@ class BackupDialogData:
         self.device_version = self.device_status= None
         self.write_click = 0
         self.duplicate_node_name = None
+
+class RestoreDialogData:
+    def __init__(self):
+        self.dialog_w = None
+        self.file_entry = None
+        self.subadd_entry = None
+        self.restore_button = None
+        self.device_version = self.device_status= None
+        self.list_wg = None
+        self.config = None
 
 class MainDialogData:
     def __init__(self):
@@ -1017,6 +1150,7 @@ sensor_data=SensorDialogData()
 turnout_data=TurnoutDialogData()
 test_data = TestDialogData()
 backup_data= BackupDialogData()
+restore_data = RestoreDialogData()
 while True:
     with Context():
         main_dialog()
