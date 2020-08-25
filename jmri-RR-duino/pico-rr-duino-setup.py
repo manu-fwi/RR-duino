@@ -1,4 +1,4 @@
-import serial_bus,time,sys
+import serial_bus,time,sys,json
 from picotui.context import Context
 from picotui.screen import Screen
 from picotui.widgets import *
@@ -235,7 +235,105 @@ def test_clicked(b):
         return
     next_dialog = test_dialog
     main_data.dialog_w.exit = True
+
+def backup_dialog():
+    global backup_data
+
+    Screen.attr_color(C_WHITE, C_BLUE)
+    Screen.cls()
+    Screen.attr_reset()
+    backup_data.dialog_w = DialogNew(1, 1, 70, 20,title="RR-DUINO NODE BACKUP")
+
+    backup_data.dialog_w.add(1,1,WFrame(58,4,"Device setup address "+str(address)))
+
+    backup_data.dialog_w.add(2,2,"Status:")
+    if main_data.status is None:
+        s="Unknown state"
+    else:
+        s=main_data.status
+    backup_data.device_status = WLabel(s,22)
+    backup_data.dialog_w.add(10,2,backup_data.device_status)
+    backup_data.dialog_w.add(2,3,"EEPROM Status:")
+    backup_data.eeprom_status = WLabel(eeprom_status_str(),22)
+    backup_data.dialog_w.add(16,3,backup_data.eeprom_status)
+
+    backup_data.dialog_w.add(1,5,WFrame(68,7,"Backup"))
+    backup_data.dialog_w.add(2,6,"Backup file:")
+    backup_data.file_entry=WTextEntry(54,"")
+    backup_data.dialog_w.add(14,6,backup_data.file_entry)
+    backup_data.dialog_w.add(2,7,"Node name:")
+    backup_data.name_entry=WTextEntry(54,"")
+    backup_data.dialog_w.add(14,7,backup_data.name_entry)
+    backup_write_button = WButton(66,"Write to file")
+    backup_write_button.on("click",backup_write_clicked)
+    backup_data.dialog_w.add(2,9,backup_write_button)
+    backup_data.warning=WLabel("File name not set                                               ")
+    backup_data.dialog_w.add(2,10,backup_data.warning)
+
+    backup_data.dialog_w.loop()
+    next_dialog = None
+
+def backup_clicked(b):
+    global next_dialog,main_data,backup_data
+    backup_data.write_click = 0
+    next_dialog = backup_dialog
+    main_data.dialog_w.exit = True
+
+def restore_clicked(b):
+    global next_dialog,main_data
+    next_dialog = restore_dialog
+    main_data.dialog_w.exit = True
+
+def to_json():
+    node_dict = {}
+    code, sensors_list =load_sensors()
+    node_dict["sensors"]=sensors_list
+    code, turnouts_list =load_turnouts()
+    node_dict["turnouts"]=turnouts_list
+    return node_dict
+
+def backup_write_clicked(b):
+    global backup_data
+
+    backup_data.write_click += 1
+    filename = backup_data.file_entry.get()
+    if len(filename)==0:
+        backup_data.warning.t = "File name not set"
+        backup_data.warning.redraw()
+        return
+    nodename = backup_data.name_entry.get()
+    try:
+        with open(filename,"r") as cfg_file:
+            config = json.load(cfg_file)
+    except:
+        config = {}
+
+    if nodename in config:
+        if backup_data.write_click == 1:
+            backup_data.warning.t = "A node with the same name exists already, click again to confirm"
+            backup_data.warning.redraw()
+            return
+    backup_data.write_click = 0
+
+    config[nodename] = to_json()
     
+    try:
+        with open(filename,"w") as cfg_file:
+            json.dump(config,cfg_file)
+        backup_data.warning.t="Successful Backup"
+    except:
+        backup_data.warning.t = "Error while writing file!"
+    backup_data.warning.redraw()
+    
+class BackupDialogData:
+    def __init__(self):
+        self.dialog_w = None
+        self.name_entry = None
+        self.file_entry = None
+        self.backup_button = None
+        self.device_version = self.device_status= None
+        self.write_click = 0
+
 class MainDialogData:
     def __init__(self):
         self.device_status = self.eeprom_status = None
@@ -245,7 +343,6 @@ class MainDialogData:
         self.dialog_w = None
         self.eeprom_state = [None,None]
         self.device_version = self.status= None
-
         
 def main_dialog():
     global main_data
@@ -325,7 +422,12 @@ def main_dialog():
     main_data.dialog_w.add(48,11,test_button)
 
     main_data.dialog_w.add(1,13,WFrame(70,3,"Backup"))
-    
+    backup_button = WButton(33,"Backup node to file")
+    backup_button.on("click",backup_clicked)
+    main_data.dialog_w.add(2,14,backup_button)
+    restore_button = WButton(34,"Restore node from file")
+    restore_button.on("click",restore_clicked)
+    main_data.dialog_w.add(36,14,restore_button)
     main_data.dialog_w.loop()
 
 def pad_int(int,nb):
@@ -335,6 +437,7 @@ def pad_int(int,nb):
     return s
 
 def get_sensors_cfg(msg):
+    sensors_list = []
     pos = 0
     while pos+1<len(msg):
         output = (msg[pos] & (1<<6))!=0
@@ -351,23 +454,25 @@ def get_sensors_cfg(msg):
             s+="I"
             if pullup:
                 s+=" P"
-        sensor_data.sensors_list.append(s)
-    
+        sensors_list.append(s)
+    return sensors_list
+
 def load_sensors():
-    sensor_data.sensors_list = []
+    sensors_list = []
     done = False
     while not done:
         #send command
         c= 0b11001001
         s.send(bytes((0xFF,c,address)))
         msg,code = wait_for_show_answer()
-        sensor_data.device_status.t=code
+
         if msg is None:
             done=True
         else:
             #check if there is another answer pending
             done = (msg[1]& (1<<1))==0
-            get_sensors_cfg(msg[3:])
+            sensors_list.extend(get_sensors_cfg(msg[3:]))
+    return (code,sensors_list)
 
 class SensorDialogData:
     def __init__(self):
@@ -411,7 +516,7 @@ def sensor_commit_clicked(b):
         #no error
         sensor_data.device_status.t = m
         #reload the list
-        load_sensors()
+        sensor_data.device_status.t,sensor_data.sensors_list = load_sensors()
         sensor_data.list_wg.items = sensor_data.sensors_list
         sensor_data.list_wg.set_lines(sensor_data.list_wg.items)
         sensor_data.list_wg.redraw()
@@ -430,7 +535,7 @@ def sensor_delete_clicked(b):
         #no error
         sensor_data.device_status.t = m
         #reload the list
-        load_sensors()
+        sensor_data.device_status.t,sensor_data.sensors_list = load_sensors()
         sensor_data.list_wg.items = sensor_data.sensors_list
         sensor_data.list_wg.set_lines(sensor_data.list_wg.items)
         sensor_data.list_wg.redraw()
@@ -466,7 +571,7 @@ def sensor_dialog():
     sensor_commit_button.on("click",sensor_commit_clicked)
     sensor_data.dialog_w.add(5,10,sensor_commit_button)
 
-    load_sensors()
+    sensor_data.device_status.t,sensor_data.sensors_list = load_sensors()
 
     sensor_data.list_wg=WListBox(28,6,sensor_data.sensors_list)
     sensor_data.dialog_w.add(26,4,WFrame(30,8,"Sensors"))
@@ -658,9 +763,8 @@ def turnout_commit_clicked(b):
         #error
     else:
         #no error
-        turnout_data.device_status.t = m
         #reload the list
-        load_turnouts()
+        turnout_data.device_status.t,turnout_data.turnouts_list = load_turnouts()
         turnout_data.list_wg.items = turnout_data.turnouts_list
         turnout_data.list_wg.set_lines(turnout_data.list_wg.items)
         turnout_data.list_wg.redraw()
@@ -673,6 +777,7 @@ def relay_pin_str(pin):
         return pad_int(pin,3)
     
 def get_turnouts_cfg(msg):
+    turnouts_list = []
     pos = 0
     while pos+1<len(msg):
         relay_pins = (msg[pos] & (1<<6))!=0
@@ -698,24 +803,25 @@ def get_turnouts_cfg(msg):
             pos+=1
         else:
             s+="|"+" "*6+"|"+" "*6+"|"
-        turnout_data.turnouts_list.append(s)
+        turnouts_list.append(s)
+    return turnouts_list
     
 
 def load_turnouts():
-    turnout_data.turnouts_list = []
+    turnouts_list = []
     done = False
     while not done:
         #send command
         c= 0b11011001
         s.send(bytes((0xFF,c,address)))
         msg,code = wait_for_show_answer(True)
-        turnout_data.device_status.t=code
         if msg is None:
             done=True
         else:
             #check if there is another answer pending
             done = (msg[1]& (1<<1))==0
-            get_turnouts_cfg(msg[3:])
+            turnouts_list.extend(get_turnouts_cfg(msg[3:]))
+    return (code,turnouts_list)
 
 def sanitize_pos():
     if turnout_data.fine_tune_pos < 0:
@@ -775,9 +881,8 @@ def turnout_delete_clicked(b):
         turnout_data.device_status.t = code
     else:
         #no error
-        turnout_data.device_status.t = m
         #reload the list
-        load_turnouts()
+        turnout_data.device_status.t,turnout_data.turnouts_list = load_turnouts()
         turnout_data.list_wg.items = turnout_data.turnouts_list
         turnout_data.list_wg.set_lines(turnout_data.list_wg.items)
         turnout_data.list_wg.redraw()
@@ -855,7 +960,7 @@ def turnout_dialog():
     turnout_commit_button.on("click",turnout_commit_clicked)
     turnout_data.dialog_w.add(5,14,turnout_commit_button)
 
-    load_turnouts()
+    turnout_data.device_status.t,turnout_data.turnouts_list = load_turnouts()
 
     turnout_data.list_wg=WListBox(40,10,turnout_data.turnouts_list)
     turnout_data.dialog_w.add(26,4,WFrame(42,13,"Turnouts"))
@@ -894,7 +999,7 @@ def turnout_dialog():
     
 messages=[]
 serial_port = "/dev/ttyACM0"
-serial_speed = 19200
+serial_speed = 38400
 s = serial_bus.serial_bus(serial_port,serial_speed)
 address=0
 subaddress = 0
@@ -904,6 +1009,7 @@ main_data = MainDialogData()
 sensor_data=SensorDialogData()
 turnout_data=TurnoutDialogData()
 test_data = TestDialogData()
+backup_data= BackupDialogData()
 while True:
     with Context():
         main_dialog()
