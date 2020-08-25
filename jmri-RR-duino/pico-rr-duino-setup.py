@@ -68,16 +68,17 @@ def wait_for_show_answer(turnouts=False):
             if len(m)==next_subadd_pos+1 and (m[next_subadd_pos] & 0x80!=0):
                 #end of the message
                 break
-            elif len(m)>next_subadd_pos:
-                #compute next subbaddress pos
-                if not turnouts:
-                    next_subadd_pos+=2
-                else:
-                    #check if relay pins are needed for this turnout
-                    if (m[next_subadd_pos] & (1<<6))!=0:
-                        next_subadd_pos+=6
+            else:
+                while len(m)>next_subadd_pos:
+                    #compute next subbaddress pos
+                    if not turnouts:
+                        next_subadd_pos+=2
                     else:
-                        next_subadd_pos+=4
+                        #check if relay pins are needed for this turnout
+                        if (m[next_subadd_pos] & (1<<6))!=0:
+                            next_subadd_pos+=6
+                        else:
+                            next_subadd_pos+=4
 
     if len(m)==0:
         return (None,"Device not responding")
@@ -253,7 +254,7 @@ def main_dialog():
     Screen.attr_color(C_WHITE, C_BLUE)
     Screen.cls()
     Screen.attr_reset()
-    main_data.dialog_w = DialogNew(5, 5, 70, 15,title="RR-DUINO SETUP")
+    main_data.dialog_w = DialogNew(5, 5, 70, 17,title="RR-DUINO SETUP")
     next_dialog = None
 
     main_data.dialog_w.add(1, 1, WFrame(35, 5, "Serial Port"))
@@ -291,7 +292,7 @@ def main_dialog():
     main_data.device_version_label = WLabel(s,23)
     main_data.dialog_w.add(45,4,main_data.device_version_label)
     
-    main_data.dialog_w.add(1,6,WFrame(63,4,"Device setup"))
+    main_data.dialog_w.add(1,6,WFrame(70,4,"Device setup"))
 
     main_data.dialog_w.add(2,7,"Status:")
     if main_data.status is None:
@@ -301,27 +302,29 @@ def main_dialog():
     main_data.device_status = WLabel(s,26)
     main_data.dialog_w.add(10,7,main_data.device_status)
     main_data.eeprom_status = WLabel(eeprom_status_str(),25)
-    main_data.dialog_w.add(37,7,main_data.eeprom_status)
-    load_eeprom_button = WButton(19,"Load EEPROM")
+    main_data.dialog_w.add(45,7,main_data.eeprom_status)
+    load_eeprom_button = WButton(22,"Load EEPROM")
     load_eeprom_button.on("click",load_eeprom_clicked)
     main_data.dialog_w.add(2,8,load_eeprom_button)
-    store_eeprom_button = WButton(19,"Store to EEPROM")
+    store_eeprom_button = WButton(22,"Store to EEPROM")
     store_eeprom_button.on("click",store_eeprom_clicked)
-    main_data.dialog_w.add(22,8,store_eeprom_button)
-    clear_eeprom_button = WButton(19,"Clear EEPROM")
+    main_data.dialog_w.add(25,8,store_eeprom_button)
+    clear_eeprom_button = WButton(22,"Clear EEPROM")
     clear_eeprom_button.on("click",clear_eeprom_clicked)
-    main_data.dialog_w.add(42,8,clear_eeprom_button)
+    main_data.dialog_w.add(48,8,clear_eeprom_button)
 
-    main_data.dialog_w.add(1,10,WFrame(63,3,"Setup"))
-    turnout_button = WButton(18,"Turnouts setup")
+    main_data.dialog_w.add(1,10,WFrame(70,3,"Setup"))
+    turnout_button = WButton(22,"Turnouts setup")
     turnout_button.on("click",turnout_clicked)
     main_data.dialog_w.add(2,11,turnout_button)
-    sensor_button = WButton(17,"Sensors setup")
+    sensor_button = WButton(22,"Sensors setup")
     sensor_button.on("click",sensor_clicked)
-    main_data.dialog_w.add(21,11,sensor_button)
-    test_button = WButton(17,"Test setup")
+    main_data.dialog_w.add(25,11,sensor_button)
+    test_button = WButton(22,"Test setup")
     test_button.on("click",test_clicked)
-    main_data.dialog_w.add(39,11,test_button)
+    main_data.dialog_w.add(48,11,test_button)
+
+    main_data.dialog_w.add(1,13,WFrame(70,3,"Backup"))
     
     main_data.dialog_w.loop()
 
