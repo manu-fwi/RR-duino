@@ -276,6 +276,7 @@ def backup_dialog():
 def backup_clicked(b):
     global next_dialog,main_data,backup_data
     backup_data.write_click = 0
+    backup_data.duplicate_node_name = None
     next_dialog = backup_dialog
     main_data.dialog_w.exit = True
 
@@ -309,12 +310,17 @@ def backup_write_clicked(b):
         config = {}
 
     if nodename in config:
+        if nodename != backup_data.duplicate_node_name:
+            #reset click number for a new duplicate
+            backup_data.write_click = 1
+            backup_data.duplicate_node_name = nodename
+            
         if backup_data.write_click == 1:
             backup_data.warning.t = "A node with the same name exists already, click again to confirm"
             backup_data.warning.redraw()
             return
     backup_data.write_click = 0
-
+    backup_data.duplicate_node_name = None
     config[nodename] = to_json()
     
     try:
@@ -333,6 +339,7 @@ class BackupDialogData:
         self.backup_button = None
         self.device_version = self.device_status= None
         self.write_click = 0
+        self.duplicate_node_name = None
 
 class MainDialogData:
     def __init__(self):
