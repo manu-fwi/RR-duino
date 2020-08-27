@@ -4,7 +4,7 @@ This sketch enables an arduino to control sensors (I/O) and turnouts (using serv
 
 It has been tested with mega, leonardo but any other should work, maybe you have to disable debug as it uses another serial port.
 
-The typical setup would be: several arduinos running this sketch on a "bus" (rs485 for example) as slaves and a master node to do all the requests. You can check openlcb_gateway, it is a openlcb gateway written in Python that can handle RR_duino nodes so they appear as regular openlcb nodes with ID/events, CDI configuration,...
+The typical setup would be: several arduinos running this sketch on a "bus" (rs485 for example) as slaves and a master node to do all the requests. You can check openlcb_gateway, it is a openlcb gateway written in Python that can handle RR_duino nodes so they appear as regular openlcb nodes with ID/events, CDI configuration,... Soon available: a direct connection to JMRI (using jython) to control the nodes from a master node via WiFi or ethernet (ESP-8266 for example).
 
 Features:
 
@@ -26,4 +26,4 @@ Features:
 
 Note for the servo control of a turnout: just set the servo to 90° position before mounting it; mount it on the turnout (no need to set the extreme position, it does not matter if the turnout is not straight or thrown). Then use the fine tuning command to find the precise positions for straight/thrown, and then config the servo positions accordingly.
 
-<b>NEW: now there is a python script (pico-rr-duino-setup.py) that enables you to setup all your sensors/turnouts via a text user interface (see the wiki page)!</b>
+<b>NEW: now there is a python script (pico-rr-duino-setup.py) that enables you to setup all your sensors/turnouts, test them, fine tune the servo positions and backup restore nodes from files (you can backup a node and restore it as it was in case of an hardware failure for example) via a text user interface (see the wiki page)!</b>
