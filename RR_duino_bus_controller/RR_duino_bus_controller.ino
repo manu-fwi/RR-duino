@@ -91,7 +91,8 @@ void setup() {
     state = !state;
     digitalWrite(13,state?HIGH:LOW);
   }
-  while (!debug_client.connected()) {
+  unsigned long beg = millis();
+  while (!debug_client.connected() && (millis()-beg<5000)) {
     debug_client.connect("192.168.0.22",50000);
     delay(1000);
   }
