@@ -40,8 +40,8 @@ void send_async_events()
     DEBUGLN(F("ASYNC EVENTS, NON SENSOR RELATED"));
     if (!(async_head->next)) { // last answer to be sent
       // We need to check if we set the other answers pending (in case of async events waiting)
-      if (sensors_chng_state) { // any input changed or async events waiting?
-        async_head->data[0] |= (1 << CMD_PEND_ANSWERS_BV);
+      if (sensors_chng_state) { // any input changed ?
+        async_head->data[0] |= (1 << CMD_ASYNC_BV); // send async events waiting
       }
       async_head->data[async_head->len++]=0x80;// we need to add termination to the last
     }
@@ -59,7 +59,7 @@ void send_async_events()
     // Now send all sensors state changes
     sensor_cfg_t * sens = sensor_cfg_head;
     byte * data = new byte[MAX_CMD_LEN];
-    data[0]=(1<<CMD_ASYNC_BV);  // as a read sensor command, async bit set
+    data[0]=0;  // as a read sensor command
     data[1]=address | (1 << ADD_LIST_BV);  // Its a list
     byte len=2;
     DEBUG(F("SENSORS ASYNCS:"));
@@ -80,6 +80,8 @@ void send_async_events()
           if ((len > MAX_CMD_LEN-2) || !sensors_chng_state) { // no more space or last change
             if (sensors_chng_state)
               data[0] |= (1 << CMD_PEND_ANSWERS_BV); // more to come
+            if (async_head)
+              data[0] |= (1<< CMD_ASYNC_BV); // New async events pending
             data[len++]=0x80;  // Indicates last subaddress
             set_data_dir();
             to_bus.write(0xFF); // Start byte
@@ -95,7 +97,7 @@ void send_async_events()
       sens = sens->next;  // Next sensor
     }
     if (empty_answer) { // in  case no event was to be reported, send an empty answer
-      data[0]= 0b00000100; // nothing to be reported
+      data[0]= 0; // nothing to be reported
       data[1]=address | (1<<ADD_LIST_BV);
       data[2]=0x80;
       set_data_dir();
@@ -146,7 +148,7 @@ void queue_async_turnout(turnout_cfg_t * turnout)
     // create a new answer
     answer_t * p = new struct answer_t;
     p->data = new byte[MAX_CMD_LEN];
-    p->data[0]=(1<<CMD_ASYNC_BV) | (1<<CMD_SENS_TURN_BV);  // as a read command answer with async bit set
+    p->data[0]=(1<<CMD_SENS_TURN_BV);  // as a read command answer
     p->data[1]=address | (1 << ADD_LIST_BV);
     p->len = 2;
     p->next = NULL;
