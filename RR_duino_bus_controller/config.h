@@ -7,8 +7,8 @@
 #define DATA_DIR_PIN 3  //set it to a pin number if bus if half duplex and need to set data dir through this pin
                         //set it to 255 if bus is full duplex and this is not needed
 
-#define WIFISSID "VOO-100775"
-#define WIFIPASS "PUQPMPNS"
+#define WIFISSID "YOUR SSID"
+#define WIFIPASS "YOUR PASSWD"
 
 #define SERVER_IP "192.168.0.22"
 #define SERVER_PORT 50011
