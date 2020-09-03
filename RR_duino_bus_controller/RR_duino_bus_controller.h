@@ -6,6 +6,7 @@
 // Defines for the protocol
 #define START_BYTE 0xFF
 #define TIME_OUT 100  // ms
+#define PING_TOUT 500 // ms
 #define SERVER_READ_TOUT 2 // in ms, timeout for reading characters from the server
 
 // Define for the command bits positions

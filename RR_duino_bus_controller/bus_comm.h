@@ -16,7 +16,7 @@
 #define ANSWER_TIMEOUT 100 // In ms
 
 // Variables needed by other modules
-extern byte command,address;
+extern byte command,address,buf[];
 
 // Functions
 void set_data_dir(bool write);
@@ -27,5 +27,6 @@ int store_eeprom(byte address);
 int load_eeprom(byte address);
 int show_tables_cmd(byte address);  // Send show table cmd, process the answer and insert a new node if everything went fine
 int read_all(node * new_node,bool turnouts = false); // read all states of sensors/turnouts
+int async_read(node * node_to_ping);   // used to check if node has some changes to report
 
 #endif // BUS_COMM_H

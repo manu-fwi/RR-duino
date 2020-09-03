@@ -61,11 +61,8 @@ int answer_from_bus_step()
         //Check if it is an answer and it corresponds the command we have sent
         if ((c&0x01)!=0)
           error = -NOT_AN_ANSWER;
-        else {
-          if ((command & CMD_ASYNC_BV)!=0) {
-            if ((c & CMD_ASYNC_BV)==0)
-              error = -NOT_SAME_COMMAND;
-          } else if ((command & 0xF8)!=(c & 0xF8))
+        else if ((command & (1<<CMD_ASYNC_BV))==0) { // Only check if not an async command
+          if ((command & 0xF8)!=(c & 0xF8))
             error = -NOT_SAME_COMMAND;                      
         }
       }
@@ -249,4 +246,12 @@ int read_all(node * new_node,bool turnout)
   }
 
   return 0;
+}
+
+int async_read(node * node_to_ping)   // used to check if node has some changes to report
+{
+  byte cmd[]={1 << CMD_CMD_ANSWER_BV | 1 << CMD_ASYNC_BV,node_to_ping->address};
+  send_one_msg(cmd,2);
+  // Get answer
+  return answer_from_bus(declare_new_node_to_server);
 }

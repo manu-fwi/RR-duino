@@ -184,7 +184,7 @@ void process_server_cmd(String cmd)
     DEBUG(address);
     DEBUG(" subadd=");
     DEBUGLN(subaddress);
-    byte bus_cmd[]={ 1 << CMD_RWDIR_BV | 1,(byte)address,(byte)subaddress}; // Write command
+    byte bus_cmd[]={ 1 << CMD_RWDIR_BV | 1,(byte)address,(byte)subaddress | (value << SUB_VALUE_BV)}; // Write command
     if (!is_sensor)
       bus_cmd[0]|=1 << CMD_SENS_TURN_BV; // It is a turnout
     send_one_msg(bus_cmd,3);
@@ -194,6 +194,11 @@ void process_server_cmd(String cmd)
       DEBUG("Write command failed with error code:");
       DEBUGLN(res);
       return;
+    } else if (is_sensor) {
+      // For output sensors send a feedback right away (not needed for turnouts as they have their own mechanism for that)
+      String msg("ISRS");
+      msg+=String(address)+":"+String(subaddress+200)+","+String(value);  // JMRI feedback sensors for output sensors, need to add 200 to the RRduino subaddress
+      client.println(msg);
     }
   }
 }
@@ -229,6 +234,62 @@ void declare_new_node_to_server()
     current->state=CONFIRMED;
     // Update number of ONLINE nodes remaining
     online_nodes--;
+  }
+}
+
+void ping_nodes()
+{
+  node * min_ping_node=NULL;
+  unsigned long min_ping = millis();
+
+  if (!client.connected())
+    return; // No server connected, no point in sending reports
+  DEBUGLN("Ping nodes");
+  for (node * current=nodes_head;current;current=current->next) {
+    DEBUGLN(current->state);
+    if ((current->state == CONFIRMED) && (current->last_ping<min_ping)) {
+      min_ping = current->last_ping;
+      min_ping_node = current;
+    }
+  }
+  if (!min_ping_node || (millis()-min_ping<PING_TOUT))
+    return;  // No node to ping
+  int err = async_read(min_ping_node);
+  DEBUG("err=");
+  DEBUGLN(err);
+  if (err<0) {
+    // Node did not answer, set it as "dead"
+    DEBUGLN("Dead node!");
+    min_ping_node->state = DEAD_NODE;
+  } else {
+    DEBUG("Pinging node ");
+    DEBUG(min_ping_node->address);
+    DEBUG(" last ping=");
+    DEBUGLN(millis()-min_ping_node->last_ping);
+    // Parse the answer
+    // First: if there are more answers, reset last ping time 
+    if (!(buf[0] & (1<<CMD_PEND_ANSWERS_BV)) && !(buf[0] & (1<<CMD_ASYNC_BV)))
+      min_ping_node->last_ping = millis();
+    else // Otherwise reset it to the right time to be rescheduled again when older ping nodes have been dealt with
+      min_ping_node->last_ping = millis()-PING_TOUT;
+    byte pos = 2; // First payload byte
+    while ((buf[pos] & 0x80)==0) {
+      // Generate message to server
+      byte subadd = buf[pos] & 0x3F;
+      if (buf[0] & (1<<CMD_SENS_TURN_BV)) // Turnouts => add 100 to subaddress
+        subadd += 100;
+      byte value = buf[pos] & (1<<SUB_VALUE_BV);
+      if (value != 0)
+        value = 1;
+      String msg("ISRS");
+      msg += String(min_ping_node->address);
+      msg += ':';
+      msg += String(subadd);
+      msg += ',';
+      msg += String(value);
+      client.println(msg);
+      pos++; // Next byte
+    }
   }
 }
 
@@ -301,7 +362,7 @@ void loop() {
         }
       }
     }
-  }
+  } else ping_nodes();
 
   if (!client.connected())
     return;
