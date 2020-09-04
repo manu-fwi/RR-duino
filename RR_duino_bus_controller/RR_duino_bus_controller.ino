@@ -81,23 +81,29 @@ void noop() {}
 void setup() {
   // put your setup code here, to run once:
   TO_BUS.begin(SERIAL_SPEED);
+  if (DATA_DIR_PIN!=255) {
+    pinMode(DATA_DIR_PIN,OUTPUT);
+    digitalWrite(DATA_DIR_PIN,LOW);
+  }
+  
   WiFi.begin(WIFISSID, WIFIPASS);
   state = true;
-  digitalWrite(13,state?HIGH:LOW);
+  pinMode(STATUS_LED, OUTPUT);
+  digitalWrite(STATUS_LED,state?HIGH:LOW);
   // Connect to wifi
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
     state = !state;
-    digitalWrite(13,state?HIGH:LOW);
+    digitalWrite(STATUS_LED,state?HIGH:LOW);
   }
   unsigned long beg = millis();
   while (!debug_client.connected() && (millis()-beg<5000)) {
-    debug_client.connect("192.168.0.22",50000);
+    debug_client.connect(DEBUG_SERVER_IP,DEBUG_SERVER_PORT);
     delay(1000);
   }
   DEBUGLN("Debug Working");
-  digitalWrite(13,HIGH);
+  digitalWrite(STATUS_LED,HIGH);
   state = true;
   blink_time = millis();
 }
@@ -300,7 +306,7 @@ void loop() {
   if (millis()-blink_time>blink_delay) {
     blink_time = millis();
     state=!state;
-    digitalWrite(13,state?HIGH:LOW);   
+    digitalWrite(STATUS_LED,state?HIGH:LOW);   
   }
   
   // Make sure we are connected to server
