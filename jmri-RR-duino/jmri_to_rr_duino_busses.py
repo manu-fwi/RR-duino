@@ -191,6 +191,8 @@ def load_config(filename):
         config["jmri_port"]=50010
     if "rrduino_busses_port" not in config:
         config["rrduino_busses_port"]=50011
+    if "listening_ip" not in config:
+        config["listening_ip"]="127.0.0.1"
     
     return config
 
@@ -207,7 +209,7 @@ jmri_msgs_list = []   #list of msgs from jmri
 
 #server connection
 jmri_server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_add = "192.168.0.22" #FIXME
+server_add = config["listening_ip"]
 jmri_server_sock.bind((server_add, config["jmri_port"]))
 busses_server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 busses_server_sock.bind((server_add, config["rrduino_busses_port"]))
