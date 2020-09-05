@@ -189,12 +189,14 @@ def process_jmri():
 
     sep = "\n"
     while sep!="":
-        first,sep,end = jmri_last_message.partition("\n")
+        first,sep,end = jmri_last_message.partition(sep)
+        #debug(first,"/",sep,"/",end)
         if sep!="":
             jmri_msgs_list.append(first.rstrip())
             jmri_last_message = end.lstrip()
 
     for msg in jmri_msgs_list:
+        debug("rcev from jmri:",msg)
         bus_n = get_bus_number(msg)
         if bus_n != -1:
             bus = get_bus_by_number(bus_n)
@@ -204,7 +206,19 @@ def process_jmri():
 
 def debug(*args):
     print(*args)
-    
+
+def get_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # doesn't even have to be reachable
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
+
 def load_config(filename):
     #Load config file (json formatted dict config, see below)
 
@@ -216,7 +230,7 @@ def load_config(filename):
     if "rrduino_busses_port" not in config:
         config["rrduino_busses_port"]=50011
     if "listening_ip" not in config:
-        config["listening_ip"]="127.0.0.1"
+        config["listening_ip"]=get_ip()
     
     return config
 
@@ -274,6 +288,7 @@ while True:
             to_read_jmri.remove(jmri_sock)
         else:
             jmri_last_message+=m
+            debug("received from jmri:",m)
 
     process_jmri()
 
