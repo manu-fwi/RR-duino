@@ -36,6 +36,21 @@ class RRduino_bus:
             self.last_message = end.lstrip()
             new = True
 
+    def declare_jmri_objects(self,address,subaddresses,offset,is_turnout):
+        if is_turnout:
+            msg="NEW-TURNOUTS:"
+        else:
+            msg="NEW-SENSORS:"
+        for s in subaddresses:
+            msg+=str(self.number)+":"+str(address)+":"+str(s+offset)+" "
+        msg+="\r\n"
+        
+        jmri_sock.send(msg.encode('utf-8'))
+
+    def get_subaddresses(self,hex_list):
+        pos_bytes = [int(s,16) for s in hex_list.lstrip().split(" ")]
+        return [pos+1 for pos in pos_bits_set(pos_bytes)]
+    
     def process(self):
         global jmri_sock
         for msg in self.msgs_list:
@@ -64,14 +79,23 @@ class RRduino_bus:
                     address = -1
                 if address < 0:
                     return
-                pos_bytes = [int(s,16) for s in parts[1].lstrip().split(" ")]
-                input_sensors_sub = [pos+1 for pos in pos_bits_set(pos_bytes)]
-                pos_bytes = [int(s,16) for s in parts[2].lstrip().split(" ")]
-                output_sensors_sub = [pos+1 for pos in pos_bits_set(pos_bytes)]
-                pos_bytes=[int(s,16) for s in parts[3].lstrip().split(" ")]
-                turnouts_sub = [pos+1 for pos in pos_bits_set(pos_bytes)]
+                input_sensors_sub = self.get_subaddresses(parts[1])
+                output_sensors_sub =  self.get_subaddresses(parts[2])
+                turnouts_sub =  self.get_subaddresses(parts[3])
                 sensors_states = [int(s,16) for s in parts[4].lstrip().split(" ")]
                 turnouts_states = [int(s,16) for s in parts[5].lstrip().split(" ")]
+                
+                #declare input sensors to JMRI script as sensors in JMRI
+                self.declare_jmri_objects(address,input_sensors_sub,0,False)
+                #declare output sensors to JMRI script as turnouts in JMRI (subaddress+100 as number)
+                self.declare_jmri_objects(address,output_sensors_sub,100,True)
+                #declare output sensors feedback to JMRI script as sensors in JMRI (subaddress+200 as number)
+                self.declare_jmri_objects(address,output_sensors_sub,200,False)
+                #declare turnouts to JMRI script as turnouts in JMRI
+                self.declare_jmri_objects(address,turnouts_sub,0,True)
+                #declare output sensors feedback to JMRI script as sensors in JMRI (subaddress+200 as number)
+                self.declare_jmri_objects(address,turnouts_sub,100,False)
+                
                 #merge input and output sensors subaddresses in one list
                 all_sensors_sub = input_sensors_sub[:]
                 all_sensors_sub.extend(output_sensors_sub)
