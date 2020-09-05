@@ -26,7 +26,7 @@ import socket
 import json
 
 # define a turnout listener that will 
-class Turnouttransfer(java.beans.PropertyChangeListener):
+class TurnoutTransfer(java.beans.PropertyChangeListener):
     # initialization 
     # registers to receive events
     def __init__(self, id,jmri_rr_duino) :
@@ -67,6 +67,30 @@ class JMRI_RR_duino(jmri.jmrit.automat.AbstractAutomaton) :
     def init(self) :
         pass
 
+    def process_declare_objects(self,msg):
+        if msg.startswith("NEW-TURNOUTS:"):
+            is_turnout=True
+        elif msg.startswith("NEW-SENSORS:"):
+            is_turnout=False
+        else:
+            print "invalid message:",msg
+            return
+        msg = msg[msg.find(":")+1:].rstrip()  #strip out the message header
+
+        names_list = msg.split(" ")  #get all names
+        #now create the corresponding JMRI objects
+        for name in names_list:
+            if is_turnout:
+                if not turnouts.getBySystemName("ITRT"+name):
+                    print "ITRT"+name," does not exist, create it"
+                    turnouts.newTurnout("ITRT"+name,"RRduino "+name)
+                    #create listener
+                    TurnoutTransfer(name,self)
+            else:
+                if not sensors.getBySystemName("ISRS"+name):
+                    print "ISRS"+name," does not exist, create it"
+                    sensors.newSensor("ISRS"+name,"RRduino "+name)
+
     # handle() is called repeatedly until it returns false.
     def handle(self) :
         if not self.is_connected:
@@ -95,8 +119,11 @@ class JMRI_RR_duino(jmri.jmrit.automat.AbstractAutomaton) :
             print "message is:",msg
             if msg=="":
                 continue
+            if msg.startswith("NEW-"):
+                self.process_declare_objects(msg)
+                continue
             if not msg.startswith("ISRS"):
-                print msg,": prefix not valid"
+                print "invalid message:",msg
                 continue
             bus,sep,end = msg.partition(":")
             if sep == "":
