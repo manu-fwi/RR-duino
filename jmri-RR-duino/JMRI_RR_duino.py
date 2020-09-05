@@ -48,10 +48,10 @@ class TurnoutTransfer(java.beans.PropertyChangeListener):
         if (event.propertyName == "CommandedState") :
             if (event.newValue == CLOSED and event.oldValue != CLOSED) :
                 print "set CLOSED for", event.source.systemName
-                self.jmri_rr_duino.serversock.send((event.source.systemName+",0").encode('utf-8'))
+                self.jmri_rr_duino.serversock.send((event.source.systemName+",0\r\n").encode('utf-8'))
             if (event.newValue == THROWN and event.oldValue != THROWN) :
                   print "set THROWN for", event.source.systemName
-                  self.jmri_rr_duino.serversock.send((event.source.systemName+",1").encode('utf-8'))
+                  self.jmri_rr_duino.serversock.send((event.source.systemName+",1\r\n").encode('utf-8'))
 
 class JMRI_RR_duino(jmri.jmrit.automat.AbstractAutomaton) :
 
