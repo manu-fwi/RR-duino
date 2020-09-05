@@ -42,7 +42,7 @@ class TurnoutTransfer(java.beans.PropertyChangeListener):
         #print "change",event.propertyName
         #print "from", event.oldValue, "to", event.newValue
         #print "source systemName", event.source.systemName
-        print("transer!!")
+        print("transfer!!")
         if not self.jmri_rr_duino.is_connected:
             return
         if (event.propertyName == "CommandedState") :
@@ -62,6 +62,7 @@ class JMRI_RR_duino(jmri.jmrit.automat.AbstractAutomaton) :
         #for i in range(5):
         #    Turnouttransfer(i,self)
         self.is_connected = False
+        self.last_message = ""
 
     # init() is the place for your initialization
     def init(self) :
@@ -83,13 +84,32 @@ class JMRI_RR_duino(jmri.jmrit.automat.AbstractAutomaton) :
             if is_turnout:
                 if not turnouts.getBySystemName("ITRT"+name):
                     print "ITRT"+name," does not exist, create it"
-                    turnouts.newTurnout("ITRT"+name,"RRduino "+name)
+                    t=turnouts.newTurnout("ITRT"+name,"RRduino "+name)
+                    t.setFeedbackMode(jmri.Turnout.ONESENSOR)
                     #create listener
                     TurnoutTransfer(name,self)
             else:
                 if not sensors.getBySystemName("ISRS"+name):
                     print "ISRS"+name," does not exist, create it"
                     sensors.newSensor("ISRS"+name,"RRduino "+name)
+                    #check if it is a feedback sensor
+                    last_colon = name.rfind(":")
+                    begin = name[:last_colon+1]
+                    subadd_str = name[last_colon+1:]
+                    try:
+                        subadd = int(subadd_str)
+                    except:
+                        print "error when trying to extract subaddress from sensor", name
+                        subadd = -1
+                    if subadd>=100:
+                        #feedback sensor associated to a turnout
+                        #turnout subaddress is 100 less than the sensor subaddress
+                        subadd -= 100
+                        t=turnouts.getBySystemName("ITRT"+begin+str(subadd))
+                        if t is None:
+                            print "error finding the turnout associated to sensor:ISRS"+name
+                        else:
+                            t.provideFirstFeedbackSensor("ISRS"+name)
 
     # handle() is called repeatedly until it returns false.
     def handle(self) :
@@ -112,11 +132,20 @@ class JMRI_RR_duino(jmri.jmrit.automat.AbstractAutomaton) :
             msg = ""
         if msg=="":
             return True
+        self.last_message+=msg
+        #cut last incomplete message
+        end = self.last_message.rfind("\r\n")
+        if end==-1:
+            #no complete message
+            return True
+        
         #split messages, there might be several
-        msg_list=msg.split("\n")
+        msg_list=self.last_message[:end].splitlines()
+        #remember last incomplete message
+        self.last_message=self.last_message[end+2:]
         for msg in msg_list:
             msg.rstrip()
-            print "message is:",msg
+            print "message is:<",msg,">"
             if msg=="":
                 continue
             if msg.startswith("NEW-"):

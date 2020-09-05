@@ -29,7 +29,7 @@ class RRduino_bus:
     def decode_last_message(self):
         new = False
         while True:
-            begin,sep,end = self.last_message.partition("\n")
+            begin,sep,end = self.last_message.partition("\r\n")
             if sep == "":
                 return new
             self.msgs_list.append(begin.rstrip())
@@ -85,14 +85,16 @@ class RRduino_bus:
                 sensors_states = [int(s,16) for s in parts[4].lstrip().split(" ")]
                 turnouts_states = [int(s,16) for s in parts[5].lstrip().split(" ")]
                 
-                #declare input sensors to JMRI script as sensors in JMRI
-                self.declare_jmri_objects(address,input_sensors_sub,0,False)
+                #declare input sensors to JMRI script as sensors in JMRI, all turnouts MUST be declared first
+                #as some sensors are actually only feedback for them, the jython script will try to associate
+                #them to the corresponding turnouts when the sensor is created.
                 #declare output sensors to JMRI script as turnouts in JMRI (subaddress+100 as number)
                 self.declare_jmri_objects(address,output_sensors_sub,100,True)
-                #declare output sensors feedback to JMRI script as sensors in JMRI (subaddress+200 as number)
-                self.declare_jmri_objects(address,output_sensors_sub,200,False)
                 #declare turnouts to JMRI script as turnouts in JMRI
                 self.declare_jmri_objects(address,turnouts_sub,0,True)
+                self.declare_jmri_objects(address,input_sensors_sub,0,False)
+                #declare output sensors feedback to JMRI script as sensors in JMRI (subaddress+200 as number)
+                self.declare_jmri_objects(address,output_sensors_sub,200,False)
                 #declare output sensors feedback to JMRI script as sensors in JMRI (subaddress+200 as number)
                 self.declare_jmri_objects(address,turnouts_sub,100,False)
                 
@@ -187,7 +189,7 @@ def process_jmri():
     
     global jmri_last_message,jmri_msgs_list
 
-    sep = "\n"
+    sep = "\r\n"
     while sep!="":
         first,sep,end = jmri_last_message.partition(sep)
         #debug(first,"/",sep,"/",end)
