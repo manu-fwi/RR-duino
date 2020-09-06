@@ -19,6 +19,77 @@ def pos_bits_set(bits):
             bit_pos+=1
     return positions
 
+class JMRI_connection:
+    def __init__(self):
+        self.sock = None
+        #lists of messages to be sent to jmri (jmri may connect later)
+        self.important_msgs = []
+        self.states_msgs = []
+        #last received messages ready to be cut and decoded
+        self.last_message=""
+        #list of msgs from jmri
+        self.msgs_list = []
+
+    def read_net(self):
+        m=""
+        try:
+            m = self.sock.recv(200).decode('utf-8') #FIXME: only one jmri client is allowed for now
+        except socket.error:
+            debug("recv error")
+            #debug(len(m)," => ",m)
+        if not m:
+            #ready to read and empty msg means deconnection
+            print("JMRI Client has deconnected")
+            to_read_jmri.remove(self.sock)
+        else:
+            self.last_message+=m
+            debug("received from jmri:",m)
+            
+    def flush_msgs(self):
+         #socket is ready so send everything waiting, beginning by important msgs
+        for m in self.important_msgs:
+            self.sock.send(m.encode('utf-8'))
+        self.important_msgs = []
+        for m in self.states_msgs:
+            self.sock.send(m.encode('utf-8'))
+        self.states_msgs = []
+        
+    def send_important_msg(self,msg):
+        self.important_msgs.append(msg)
+        if self.sock is not None:
+            self.flush_msgs()
+            
+    def send_states_msg(self,msg):
+        self.states_msgs.append(msg)
+        if self.sock is not None:
+            self.flush_msgs()
+
+    def process(self):
+        """
+        send messages from jmri to the correct RRduino bus
+        """
+        if self.sock is None:
+            return
+        else:
+            self.flush_msgs()
+        if self.last_message!="":
+            sep = "\r\n"
+            while sep!="":
+                first,sep,end = self.last_message.partition(sep)
+                #debug(first,"/",sep,"/",end)
+                if sep!="":
+                    self.msgs_list.append(first.rstrip())
+                    self.last_message = end.lstrip()
+
+        for msg in self.msgs_list:
+            debug("rcved from jmri:",msg)
+            bus_n = get_bus_number(msg)
+            if bus_n != -1:
+                bus = get_bus_by_number(bus_n)
+                if bus is not None:
+                    bus.send(msg)
+        self.msgs_list=[]
+    
 class RRduino_bus:
     def __init__(self,number,sock):
         self.number = number
@@ -45,14 +116,13 @@ class RRduino_bus:
             msg+=str(self.number)+":"+str(address)+":"+str(s+offset)+" "
         msg+="\r\n"
         
-        jmri_sock.send(msg.encode('utf-8'))
+        jmri.send_important_msg(msg)
 
     def get_subaddresses(self,hex_list):
         pos_bytes = [int(s,16) for s in hex_list.lstrip().split(" ")]
         return [pos+1 for pos in pos_bits_set(pos_bytes)]
     
     def process(self):
-        global jmri_sock
         for msg in self.msgs_list:
             if msg.startswith("RRDUINO-BUS"):
                 #new bus
@@ -147,14 +217,10 @@ class RRduino_bus:
                 debug(sensors_states)
                 debug(turnouts_states)
             else:
-                #should be a message to send to jmri so
-                if jmri_sock is None:
-                    debug("Received",msg,"but jmri is not connected yet!")
-                else:
-                    #add bus number to it and send it to jmri
-                    to_send=msg[:4]+str(self.number)+":"+msg[4:]+"\r\n"
-                    jmri_sock.send(to_send.encode('utf-8'))
-                    debug("Sending",to_send,"to jmri")
+                #add bus number to it and send it to jmri
+                to_send=msg[:4]+str(self.number)+":"+msg[4:]+"\r\n"
+                jmri.send_states_msg(to_send)
+                debug("Sending",to_send,"to jmri")
         self.msgs_list = []
 
     def send(self,msg):
@@ -181,30 +247,6 @@ def get_bus_number(msg):
         debug("Bad bus number in msg from jmri!",msg)
         return -1
     return bus_int
-
-def process_jmri():
-    """
-    send messages from jmri to the correct RRduino bus
-    """
-    
-    global jmri_last_message,jmri_msgs_list
-
-    sep = "\r\n"
-    while sep!="":
-        first,sep,end = jmri_last_message.partition(sep)
-        #debug(first,"/",sep,"/",end)
-        if sep!="":
-            jmri_msgs_list.append(first.rstrip())
-            jmri_last_message = end.lstrip()
-
-    for msg in jmri_msgs_list:
-        debug("rcev from jmri:",msg)
-        bus_n = get_bus_number(msg)
-        if bus_n != -1:
-            bus = get_bus_by_number(bus_n)
-            if bus is not None:
-                bus.send(msg)
-    jmri_msgs_list=[]
 
 def debug(*args):
     print(*args)
@@ -244,9 +286,6 @@ else:
 if config is None:
     quit()
 
-jmri_last_message=""  #last received messages ready to be cut and decoded
-jmri_msgs_list = []   #list of msgs from jmri
-
 #server connection
 jmri_server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_add = config["listening_ip"]
@@ -264,42 +303,29 @@ busses = {}
 to_read_jmri=[jmri_server_sock]
 to_read_busses=[busses_server_sock]
 
-jmri_sock = None
-jmri_add = None
+jmri = JMRI_connection()
 
 while True:
     #first check network connections JMRI first
     ready_to_read,ready_to_write,in_error = select.select(to_read_jmri,[],[],timeout)
     if jmri_server_sock in ready_to_read:
-        jmri_sock,addr = jmri_server_sock.accept()
+        jmri.sock,addr = jmri_server_sock.accept()
         jmri_add  = (str(addr).split("'"))[1]
         debug("Got a JMRI connection from", jmri_add)
         ready_to_read.remove(jmri_server_sock)
-        to_read_jmri.append(jmri_sock)
+        to_read_jmri.append(jmri.sock)
     #check if we got something from jmri (through net)
-    if jmri_sock in ready_to_read:
-        m=""
-        try:
-            m = jmri_sock.recv(200).decode('utf-8') #FIXME: only one jmri client is allowed for now
-        except socket.error:
-            debug("recv error")
-            #debug(len(m)," => ",m)
-        if not m:
-            #ready to read and empty msg means deconnection
-            print("JMRI Client has deconnected")
-            to_read_jmri.remove(jmri_sock)
-        else:
-            jmri_last_message+=m
-            debug("received from jmri:",m)
+    if jmri.sock in ready_to_read:
+        jmri.read_net()
 
-    process_jmri()
+    jmri.process()
 
     #next connections from the RRduino busses
     ready_to_read,ready_to_write,in_error = select.select(to_read_busses,[],[],timeout)
     if busses_server_sock in ready_to_read:
         bus_sock,addr = busses_server_sock.accept()
-        jmri_add  = (str(addr).split("'"))[1]
-        debug("Got a BUS connection from", jmri_add)
+        add  = (str(addr).split("'"))[1]
+        debug("Got a BUS connection from", add)
         ready_to_read.remove(busses_server_sock)
         to_read_busses.append(bus_sock)
         #add bus the busses dictionnary, to be filled correctly later on

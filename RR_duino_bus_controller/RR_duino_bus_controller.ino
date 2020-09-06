@@ -250,7 +250,7 @@ void ping_nodes()
 
   if (!client.connected())
     return; // No server connected, no point in sending reports
-  DEBUGLN("Ping nodes");
+  //DEBUGLN("Ping nodes");
   for (node * current=nodes_head;current;current=current->next) {
     DEBUGLN(current->state);
     if ((current->state == CONFIRMED) && (current->last_ping<min_ping)) {

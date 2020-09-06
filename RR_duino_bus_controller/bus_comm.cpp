@@ -72,7 +72,7 @@ int answer_from_bus_step()
         if ((c&0x3F) != (address&0x3F))
           error = -NOT_SAME_ADD;
       }
-      if (error) {
+      if (error<0) {
         // Bad answer reset  everything
         new_answer = false;
         cmd_pos = 0;
