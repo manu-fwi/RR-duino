@@ -23,6 +23,8 @@ void set_data_dir(bool write=true)
 // send msg on the bus
 void send_one_msg(byte * msg,byte len)
 {
+  DEBUGLN("Sending message");
+  DEBUG("  ");
   set_data_dir();
   TO_BUS.write(0xFF); // Start byte
   // Make sure we store command and address to check answer to this later
@@ -33,6 +35,7 @@ void send_one_msg(byte * msg,byte len)
     DEBUG(msg[i]);
     DEBUG("*");
   }
+  DEBUGLN("");
   TO_BUS.flush();
   set_data_dir(false);
 }
@@ -106,6 +109,8 @@ int answer_from_bus_step()
 // NULL means do nothing
 int answer_from_bus(void (*task)())
 {
+  DEBUGLN("ANSWER:");
+  DEBUG("  ");
   int res = 0;
   new_answer = false;
   unsigned long beg = millis();
@@ -118,6 +123,7 @@ int answer_from_bus(void (*task)())
           DEBUGLN("Answer timed out!");
     return -ANSWER_ERR_TIMEOUT;
   }
+  DEBUGLN();
   return res;
 }
 

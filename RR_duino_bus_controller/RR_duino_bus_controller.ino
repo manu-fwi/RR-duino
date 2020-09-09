@@ -252,6 +252,9 @@ void ping_nodes()
     return; // No server connected, no point in sending reports
   //DEBUGLN("Ping nodes");
   for (node * current=nodes_head;current;current=current->next) {
+    DEBUG("Current state node ");
+    DEBUG(current->address);
+    DEBUG(":");
     DEBUGLN(current->state);
     if ((current->state == CONFIRMED) && (current->last_ping<min_ping)) {
       min_ping = current->last_ping;
@@ -315,6 +318,7 @@ void loop() {
   }
   
   if (loops % 10==0) {
+    DEBUGLN("Discovery: loops % 10");
     // Every 10 loops
     // First node that must be tested first are the TO_DISCOVER type
     node * to_discover = first_timedout_node(TO_DISCOVER,0,nodes_head);
@@ -348,6 +352,7 @@ void loop() {
       //DEBUG("should try to wake dead nodes up now!");
     }
   } else if (loops%10==5) {
+    DEBUGLN("Read NEW_NODE: loops%10==5");
     // Read states of all sensors/turnouts of nodes of type NEW_NODE
     // to bring them to ONLINE_NODE state
     node * new_node = first_timedout_node(NEW_NODE,0,nodes_head);
