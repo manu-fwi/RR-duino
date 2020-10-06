@@ -1,11 +1,14 @@
 #include "bus_comm.h"
 #include "discover.h"
 #include "nodes_list.h"
+#include "config.h"
 
 byte last_discover_add=0;
 
 void next_discover_add()
 {
+  DEBUG("next address:");
+  DEBUG(last_discover_add);
   // 62 is the maximum address node
   if (last_discover_add >= 62) {
     last_discover_add=63;
@@ -18,6 +21,8 @@ void next_discover_add()
     if (!cur)
       break;
   }
+  DEBUG(" After ");
+  DEBUGLN(last_discover_add);
 }
 
 // Check if there is a node responding at the address

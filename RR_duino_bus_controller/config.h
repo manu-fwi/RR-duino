@@ -1,6 +1,12 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <ESP8266WiFi.h>
+
+// Debug settings
+#define USE_DEBUG
+#define DEBUG_PORT 50000
+#define DEBUG_IP "192.168.0.22"
 //Communications settings
 #define TO_BUS Serial
 #define STATUS_LED LED_BUILTIN
@@ -19,4 +25,19 @@
 
 //Bus settings
 #define BUS_NUMBER 1
+
+// DEBUG MACRO
+
+#ifdef USE_DEBUG
+extern WiFiClient debug_client;
+
+#define DEBUG(msg) debug_client.print(msg)
+#define DEBUGLN(msg) debug_client.println(msg)
+
+#else
+#define DEBUG(msg) noop()
+#define DEBUGLN(msg) noop()
+
+#endif //USE_DEBUG
+
 #endif // CONFIG_H

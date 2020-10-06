@@ -62,7 +62,12 @@
 // Connection to the server
 const char * server_ip = SERVER_IP;
 const unsigned int server_port = SERVER_PORT;
-WiFiClient client,debug_client;
+WiFiClient client;
+
+#ifdef USE_DEBUG
+WiFiClient debug_client;
+#endif
+
 // Current server command
 String server_cmd;
 unsigned long last_server_send = 0;
@@ -97,13 +102,16 @@ void setup() {
     state = !state;
     digitalWrite(STATUS_LED,state?HIGH:LOW);
   }
+#ifdef USE_DEBUG
   unsigned long beg = millis();
   while (!debug_client.connected() && (millis()-beg<5000)) {
     debug_client.connect(DEBUG_SERVER_IP,DEBUG_SERVER_PORT);
     delay(1000);
   }
+#endif //USE_DEBUG
   DEBUGLN("Debug Working");
   digitalWrite(STATUS_LED,HIGH);
+  delay(1000);
   state = true;
   blink_time = millis();
 }
@@ -250,9 +258,9 @@ void ping_nodes()
 
   if (!client.connected())
     return; // No server connected, no point in sending reports
-  //DEBUGLN("Ping nodes");
+
   for (node * current=nodes_head;current;current=current->next) {
-    DEBUGLN(current->state);
+    //DEBUGLN(current->state);
     if ((current->state == CONFIRMED) && (current->last_ping<min_ping)) {
       min_ping = current->last_ping;
       min_ping_node = current;
@@ -299,6 +307,68 @@ void ping_nodes()
   }
 }
 
+void discover_node(byte address)
+{
+  DEBUG("Trying to discover at address ");
+  DEBUGLN(address);
+  int err = store_eeprom(address);
+  if (err>=0) {
+    err = load_eeprom(address);
+    if (err>=0) {
+      err = show_tables_cmd(address);
+      if (err==0) {
+        node * new_node = find_node_from_add(address);
+        if (new_node && (new_node->address==address)) {
+          DEBUG("New node, address=");
+          DEBUGLN(address);
+        }
+      }
+    }
+  }
+} 
+
+void wakeup_dead_node()
+{
+  node * dead_node = first_timedout_node(DEAD_NODE,DEAD_NODE_PERIOD,nodes_head);
+  if (dead_node) {
+    DEBUG("Trying to wake up dead node of address:");
+    DEBUGLN(dead_node->address);
+    bring_node_online(dead_node);
+  }
+}
+
+// try to read all sensors/turnouts to bring the node online
+void bring_node_online(node * n)
+{
+  // Read states of all sensors/turnouts of nodes of type NEW_NODE
+  // to bring them to ONLINE_NODE state
+
+  DEBUG("Bring node to ONLINE_NODE ");
+  DEBUGLN(n->address);
+  //update last ping time
+  n->last_ping = millis();
+  if (read_all(n)<0) {
+    DEBUG("Error reading all sensors for address ");
+    DEBUGLN(n->address);
+  } else {
+    if (read_all(n,true)<0) {
+      DEBUG("Error reading all turnouts for address ");
+      DEBUGLN(n->address);
+    } else {
+      n->state = ONLINE_NODE;
+      // Indicate that there is one more ONLINE node
+      online_nodes++;
+    }
+  }
+}
+
+// Check if there is a node in NEW_NODE state to bring it online
+void check_new_node(){
+  node * new_node = first_timedout_node(NEW_NODE,0,nodes_head);
+  if (new_node)
+    bring_node_online(new_node);
+}
+
 void loop() {
   static unsigned loops = 0;
   loops++; // Count loops to share time
@@ -325,50 +395,13 @@ void loop() {
       next_discover_add();
     if (!address)
       address = last_discover_add;
-    if (address && (address<=62)) {
-      DEBUG("Trying to discover at address ");
-      DEBUGLN(address);
-      int err = store_eeprom(address);
-      if (err>=0) {
-        err = load_eeprom(address);
-        if (err>=0) {
-          err = show_tables_cmd(address);
-          if (err==0) {
-            node * new_node = find_node_from_add(address);
-            if (new_node && (new_node->address==address)) {
-              DEBUG("New node, address=");
-              DEBUGLN(address);
-            }
-          }
-        }
-      }
-    } else {
-      // No discovery needed, try to wake dead nodes up
-      // FIXME
-      //DEBUG("should try to wake dead nodes up now!");
-    }
-  } else if (loops%10==5) {
-    // Read states of all sensors/turnouts of nodes of type NEW_NODE
-    // to bring them to ONLINE_NODE state
-    node * new_node = first_timedout_node(NEW_NODE,0,nodes_head);
-    if (new_node) {
-      DEBUG("Bring node to ONLINE_NODE ");
-      DEBUGLN(new_node->address);
-      if (read_all(new_node)<0) {
-        DEBUG("Error reading all sensors for address ");
-        DEBUGLN(new_node->address);
-      } else {
-        if (read_all(new_node,true)<0) {
-          DEBUG("Error reading all turnouts for address ");
-          DEBUGLN(new_node->address);
-        } else {
-          new_node->state = ONLINE_NODE;
-          // Indicate that there is one more ONLINE node
-          online_nodes++;
-        }
-      }
-    }
-  } else ping_nodes();
+    if (address && (address<=62))
+      discover_node(address);
+    else
+      wakeup_dead_node(); // No discovery needed, try to wake dead nodes up
+  } else if (loops%10==5) 
+    check_new_node();
+  else ping_nodes();
 
   if (!client.connected())
     return;

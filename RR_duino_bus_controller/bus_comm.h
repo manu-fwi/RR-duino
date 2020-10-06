@@ -13,9 +13,9 @@
 
 // Constants
 #define MAX_CMD_LEN 63
-#define ANSWER_TIMEOUT 100 // In ms
+#define ANSWER_TIMEOUT 200 // In ms
 
-// Variables needed by other modules
+// Variables needed by other modules  
 extern byte command,address,buf[];
 
 // Functions

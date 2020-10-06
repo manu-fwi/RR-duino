@@ -209,8 +209,8 @@ int show_tables_cmd(byte address)
   // Insert it into the nodes list
   node * prev = find_node_from_add(address);
   if (prev) {
-    prev->next = new_node;
     new_node->next=prev->next;
+    prev->next = new_node;
   }
   else {
     new_node->next = nodes_head;

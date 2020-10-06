@@ -2,11 +2,13 @@
 #define RR_DUINO_BUS_CONTROLLER_H
 
 #include <ESP8266WiFi.h>
+#include "config.h"
 
 // Defines for the protocol
 #define START_BYTE 0xFF
-#define TIME_OUT 100  // ms
+#define TIME_OUT 200  // ms
 #define PING_TOUT 500 // ms
+#define DEAD_NODE_PERIOD 3000 // in ms, time between trials to wake a dead node up
 #define SERVER_READ_TOUT 2 // in ms, timeout for reading characters from the server
 
 // Define for the command bits positions
@@ -34,16 +36,6 @@
 // Define for the pin bits positions
 #define PIN_PULLUP_BV 7
 #define PIN_RELAY_PULSE_BV 7
-
-// DEBUG MACRO
-extern WiFiClient debug_client;
-
-#define DEBUG(msg) debug_client.print(msg)
-#define DEBUGLN(msg) debug_client.println(msg)
-#define USE_DEBUG
-/*#define DEBUG(msg) noop()
-#define DEBUGLN(msg) noop()
-#undef USE_DEBUG*/
 
 // Server send
 #define SERVER_SEND_TOUT 5 //ms
