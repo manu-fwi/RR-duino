@@ -1,6 +1,12 @@
 import socket,select,time
 import json,sys
 
+#config file format
+#a dictionnary bus number (as string)<-> boolean, that is {"1":True,...}
+#that tells if the bus controller can do auto discovery
+#a dictionnary bus number (as string) <-> list of addresses, that is {"1":[1,25,78,3],...}
+#where the addresses are the one that should be discovered first (and only them if autodiscover is not allowed
+#this is to speed up the process of discovery
 #constants
 timeout=0.01
 
@@ -47,11 +53,14 @@ class JMRI_connection:
             
     def flush_msgs(self):
          #socket is ready so send everything waiting, beginning by important msgs
+
         for m in self.important_msgs:
             self.sock.send(m.encode('utf-8'))
+            debug("flush_msgs",m)
         self.important_msgs = []
         for m in self.states_msgs:
             self.sock.send(m.encode('utf-8'))
+            debug("flush_msgs",m)
         self.states_msgs = []
         
     def send_important_msg(self,msg):
@@ -82,7 +91,7 @@ class JMRI_connection:
                     self.last_message = end.lstrip()
 
         for msg in self.msgs_list:
-            debug("rcved from jmri:",msg)
+            debug("processing message from jmri:",msg)
             bus_n = get_bus_number(msg)
             if bus_n != -1:
                 bus = get_bus_by_number(bus_n)
@@ -96,6 +105,9 @@ class RRduino_bus:
         self.sock = sock
         self.last_message = ""
         self.msgs_list = []
+        self.auto_discover = True
+        self.discover_adds=None
+        self.config_loaded = False
 
     def decode_last_message(self):
         new = False
@@ -121,7 +133,30 @@ class RRduino_bus:
     def get_subaddresses(self,hex_list):
         pos_bytes = [int(s,16) for s in hex_list.lstrip().split(" ")]
         return [pos+1 for pos in pos_bits_set(pos_bytes)]
-    
+
+    def get_config(self):
+        if not self.config_loaded:
+            if str(self.number) in config["busses_config"]:
+                self.auto_discover = config["busses_config"][str(self.number)]
+            if str(self.number) in config["nodes_addresses"]:
+                self.discover_adds = config["nodes_addresses"][str(self.number)]
+
+        res = "CONFIG "
+        if not self.auto_discover:
+            res+="NO-"
+        res+="AUTO-DISCOVER"
+        if self.discover_adds is not None:
+            res+=" ADDRESSES:"
+            first = True
+            for add in self.discover_adds:
+                if add>0 and add<62:
+                    if first:
+                        first = False
+                    else:
+                        res+=","
+                    res+=str(add)
+        return res+"\r\n"
+                
     def process(self):
         for msg in self.msgs_list:
             if msg.startswith("RRDUINO-BUS"):
@@ -133,6 +168,9 @@ class RRduino_bus:
                     debug("Error in msg",msg)
                 if bus_n>=0:
                     self.number = bus_n
+                    #send the config to the bus controller
+                    self.sock.send(self.get_config().encode('utf-8'))
+                    debug("sending",self.get_config(),"to bus",bus_n)
             elif msg.startswith("NEW-NODE"):
                 debug("New node from",self.number,msg)
                 #New node came up: send all states (for input sensors but also for turnouts feedbacks)
@@ -165,7 +203,7 @@ class RRduino_bus:
                 self.declare_jmri_objects(address,input_sensors_sub,0,False)
                 #declare output sensors feedback to JMRI script as sensors in JMRI (subaddress+200 as number)
                 self.declare_jmri_objects(address,output_sensors_sub,200,False)
-                #declare output sensors feedback to JMRI script as sensors in JMRI (subaddress+200 as number)
+                #declare turnout sensors feedback to JMRI script as sensors in JMRI (subaddress+100 as number)
                 self.declare_jmri_objects(address,turnouts_sub,100,False)
                 
                 #merge input and output sensors subaddresses in one list
@@ -174,6 +212,7 @@ class RRduino_bus:
                 all_sensors_sub.sort()
                 index = 0
                 #generate a message for each sensor to signal its initial state
+                debug("----------------------------Initial states----------------------")
                 for state in sensors_states:
                     for bit_pos in range(7):
                         if index>=(len(input_sensors_sub)+len(output_sensors_sub)):
@@ -189,6 +228,7 @@ class RRduino_bus:
                             #it is an output sensor for RRduino, translate to a turnout for jmri (number=subaddress+200)
                             subaddress+=200
                         self.msgs_list.append("ISRS"+str(address)+":"+str(subaddress)+","+str(value))
+                        debug("ISRS"+str(address)+":"+str(subaddress)+","+str(value))
                         index+=1
                     if index>=(len(input_sensors_sub)+len(output_sensors_sub)):
                         #we have checked state for all sensors
@@ -207,10 +247,10 @@ class RRduino_bus:
                             value=1
                         subaddress = turnouts_sub[index]
                         self.msgs_list.append("ISRS"+str(address)+":"+str(subaddress+100)+","+str(value))
+                        debug("ISRS"+str(address)+":"+str(subaddress+100)+","+str(value))
                         index+=1
-                    if index>=(len(input_sensors_sub)+len(output_sensors_sub)):
-                        #we have checked state for all sensors
-                        break                
+
+                debug("------------------------End of initial states--------------------")
                 debug(input_sensors_sub)
                 debug(output_sensors_sub)
                 debug(turnouts_sub)
@@ -275,6 +315,13 @@ def load_config(filename):
         config["rrduino_busses_port"]=50011
     if "listening_ip" not in config:
         config["listening_ip"]=get_ip()
+
+    #nodes addresses by bus (this is to speed up nodes discovery)
+    if "nodes_addresses" not in config:
+        config["nodes_addresses"]={}
+
+    if "busses_config" not in config:
+        config["busses_config"]={}
     
     return config
 
