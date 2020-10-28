@@ -171,7 +171,14 @@ int show_tables_cmd(byte address)
 
   send_one_msg(cmd,2);
   int res;
-  node * new_node = new node;
+  node * prev_node = find_node_from_add(address);
+  node * new_node;
+  bool created = true;
+  if (!prev_node || (prev_node->address!=address)) new_node = new node; // node does not exist, create a new one
+  else {
+    new_node = prev_node;
+    created = false;
+  }
 
   // Set sensors arrays to empty
   memset(new_node->input_sensors,0,sizeof(new_node->input_sensors));
@@ -180,7 +187,7 @@ int show_tables_cmd(byte address)
   
   res = answer_from_bus(declare_new_node_to_server);
   if (res<0) {
-    delete new_node;
+    if (created) delete new_node;
     return res;
   }
 
@@ -193,7 +200,7 @@ int show_tables_cmd(byte address)
   send_one_msg(cmd,2);
   res = answer_from_bus(declare_new_node_to_server);
   if (res<0) {
-    delete new_node;
+    if (created) delete new_node;
     return res;
   }
 
@@ -205,16 +212,18 @@ int show_tables_cmd(byte address)
   // Populate node members
   new_node->address = address;
   new_node->state = NEW_NODE;
-  new_node->last_ping = 0;
-  // Insert it into the nodes list
-  node * prev = find_node_from_add(address);
-  if (prev) {
-    new_node->next=prev->next;
-    prev->next = new_node;
-  }
-  else {
-    new_node->next = nodes_head;
-    nodes_head = new_node;
+  new_node->last_ping = millis();
+  // Insert it into the nodes list if new node
+  if (created) 
+  {
+    if (prev_node) {
+      new_node->next=prev_node->next;
+      prev_node->next = new_node;
+    }
+    else {
+      new_node->next = nodes_head;
+      nodes_head = new_node;
+    }
   }
   return res;
 }

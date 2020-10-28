@@ -10,6 +10,7 @@
 #define PING_TOUT 500 // ms
 #define DEAD_NODE_PERIOD 3000 // in ms, time between trials to wake a dead node up
 #define SERVER_READ_TOUT 2 // in ms, timeout for reading characters from the server
+#define SERVER_CONN_ANSWER_TOUT 200 // in ms, timeout when waiting for a server answer after the initial connection
 
 // Define for the command bits positions
 #define CMD_CFGCMD_BV 7

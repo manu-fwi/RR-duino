@@ -4,6 +4,7 @@
 #include <Arduino.h>
 
 extern byte last_discover_add;
+extern bool auto_discover;
 
 void next_discover_add();
 

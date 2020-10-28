@@ -4,6 +4,7 @@
 #include "config.h"
 
 byte last_discover_add=0;
+bool auto_discover = true;
 
 void next_discover_add()
 {
