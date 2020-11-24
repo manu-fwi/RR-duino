@@ -26,4 +26,17 @@ Features:
 
 Note for the servo control of a turnout: just set the servo to 90° position before mounting it; mount it on the turnout (no need to set the extreme position, it does not matter if the turnout is not straight or thrown). Then use the fine tuning command to find the precise positions for straight/thrown, and then config the servo positions accordingly.
 
-<b>NEW: now there is a python script (pico-rr-duino-setup.py) that enables you to setup all your sensors/turnouts, test them, fine tune the servo positions and backup restore nodes from files (you can backup a node and restore it as it was in case of an hardware failure for example) via a text user interface (see the wiki page)!</b>
+# RR_duino_bus_controller
+
+ This sketch is used to control a "bus" (read rs485 bus here) of RR-duino nodes. For now this sketch is made for esp8266 boards but may be adapted to any wifi enabled arduino compatible easily (needs some ifdef basically)
+It will ping nodes to set/get new states, wake dead nodes up if necessary and report to a server (see below)
+
+# jmri-RR-duino
+
+Several python scripts:
+
+- pico-rr-duino-setup.py: enables you to setup all your sensors/turnouts, test them, fine tune the servo positions and backup restore nodes from files (you can backup a node and restore it as it was in case of an hardware failure for example) via a text user interface (see the wiki page).
+
+- RR_duino_jmri_monitor.py: small python server that can connect to esp8266s running RR_duino_bus_controller (see above). This server will send all necessary information to a jython script to make the link with JMRI. It will: create all sensors/turnouts necessary in JMRI, translate commands to and from JMRI to command to and from bus controllers. This is all networked so this script can run wherever you want (does not have to run on the same computer as JMRI).
+
+- JMRI_RR_duino.py: jython script to run in JMRI that will receive necessary information from RR_duino_jmri_monitor.py from the RR_duino busses.
