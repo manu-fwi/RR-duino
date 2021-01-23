@@ -13,7 +13,10 @@
    xx is the bus number (to distinguish between several busses)
    After this the server is able to send the requests to the corresponding bus via this controller
    The server MAY reply by a config message:
-   CONFIG AUTO-DISCOVER/NO-AUTO-DISCOVER [ADDRESSES:comma separated nodes addresses to test in priority]
+   CONFIG [AUTO-DISCOVER] [OUTPUT-SENSOR-FEEDBACK] [ADDRESSES:comma separated nodes addresses to test in priority]
+
+   AUTO-DISCOVER => force auto-discover of nodes on the bus (this is off by default)
+   OUTPUT-SENSOR-FEEBACK => send feedback when setting an output sensor (this is off by default)
 
    When a new node is discovered:
    NEW-NODE:address, x x x x x x x x x, x x x x x x x x x, x x x x x x x x x , x x ... x , x x ... x
@@ -83,6 +86,9 @@ unsigned long blink_delay = 1000; // Normal operation: blink once/second
 bool waiting_for_an_answer = false;
 unsigned long last_command = 0;
 
+// Control the response to output sensor setting
+bool output_sensor_feedback = false;
+
 void noop() {}
 
 void setup() {
@@ -145,7 +151,8 @@ void connect_to_server()
       if ((c != '\n') || !server_answ.startsWith("CONFIG"))
         DEBUGLN("Malformed server answer");
       else {
-        auto_discover = (server_answ.indexOf("NO-AUTO-DISCOVER")!=-1); // Check the auto discover parameter
+        auto_discover = (server_answ.indexOf("AUTO-DISCOVER")!=-1); // Check the auto discover parameter
+        output_sensor_feedback = (server_answ.indexOf("OUTPUT-SENSOR-FEEDBACK")!=-1); // Check output sensor feedback
         int config_pos = server_answ.indexOf("ADDRESSES:");
         if (config_pos >= 0) {
           // Addresses to test in priority are given, lets get them
@@ -271,7 +278,7 @@ void process_server_cmd(String cmd)
       DEBUG("Write command failed with error code:");
       DEBUGLN(res);
       return;
-    } else if (is_sensor) {
+    } else if (is_sensor && output_sensor_feedback) {
       // For output sensors send a feedback right away (not needed for turnouts as they have their own mechanism for that)
       String msg("ISRS");
       msg += String(address) + ":" + String(subaddress + 200) + "," + String(value); // JMRI feedback sensors for output sensors, need to add 200 to the RRduino subaddress
@@ -338,7 +345,7 @@ void ping_nodes()
   if (!node_to_ping || (millis() - node_to_ping->last_ping < PING_TOUT))
     return;  // No node to ping
   int err = async_read(node_to_ping);
-  DEBUG("err=");
+  DEBUG("ping_nodes err=");
   DEBUGLN(err);
   if (err < 0) {
     // Node did not answer, set it as "dead"
@@ -463,7 +470,6 @@ void loop() {
   if (!client.connected()) {
     connect_to_server();
   }
-
   if (loops % 10 == 0) {
     // Every 10 loops
     // First node that must be tested first are the TO_DISCOVER type
@@ -482,7 +488,8 @@ void loop() {
   } else if (loops % 10 == 5)
     check_new_node();
   else ping_nodes();
-
+  DEBUG("Stage 1=");
+  DEBUGLN(millis()-t);
   if (!client.connected())
     return;
   // Check network for commands from the server
@@ -496,6 +503,8 @@ void loop() {
       break;
     } else server_cmd += c;
   }
+  DEBUG("stage 2=");
+  DEBUGLN(millis()-t);
   declare_new_node_to_server();
   DEBUG("loop time:");
   DEBUGLN(millis()-t);
